@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../domain/models/account.dart';
 import '../../domain/models/transaction_item.dart';
 import '../../domain/models/category.dart';
+import '../../utils/number_formatters.dart';
 
 class StatementDetailScreen extends StatelessWidget {
   final Account account;
@@ -45,7 +46,7 @@ class StatementDetailScreen extends StatelessWidget {
                 Text('Payment Due: ${DateFormat('MMM dd, yyyy').format(dueDate)}', style: const TextStyle(fontSize: 14, color: Colors.red, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 Text('Total Spend / Due', style: TextStyle(fontSize: 12, color: colorScheme.onPrimaryContainer.withOpacity(0.7))),
-                Text('₱${totalAmount.toStringAsFixed(2)}', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: colorScheme.onPrimaryContainer)),
+                Text('₱${totalAmount.toCurrency()}', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: colorScheme.onPrimaryContainer)),
               ],
             ),
           ),
@@ -72,7 +73,7 @@ class StatementDetailScreen extends StatelessWidget {
                     ],
                   ),
                   subtitle: Text('${tx.type.toUpperCase()} • $dateStr', style: const TextStyle(fontSize: 10)),
-                  trailing: Text('₱${_calculateImpact(tx).toStringAsFixed(2)}', style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
+                  trailing: Text('₱${_calculateImpact(tx).toCurrency()}', style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
                 );
               },
             ),

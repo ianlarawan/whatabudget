@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../state/providers.dart';
 import '../../domain/models/account.dart';
 import '../../domain/models/interest_tier.dart';
+import '../../utils/number_formatters.dart';
 
 class AccountFormScreen extends ConsumerStatefulWidget {
   const AccountFormScreen({super.key});
@@ -176,7 +177,7 @@ class _AccountFormScreenState extends ConsumerState<AccountFormScreen> {
                         itemCount: _tiers.length,
                         itemBuilder: (ctx, i) => ListTile(
                           dense: true, contentPadding: EdgeInsets.zero,
-                          title: Text('> ₱${_tiers[i].threshold.toStringAsFixed(2)}'),
+                          title: Text('> ₱${_tiers[i].threshold.toCurrency()}'),
                           subtitle: Text('${_tiers[i].rate}% p.a.'),
                           trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () => setState(() => _tiers.removeAt(i))),
                         ),

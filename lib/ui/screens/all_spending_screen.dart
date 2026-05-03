@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'dart:math';
 import '../../state/providers.dart';
 import '../../domain/models/transaction_item.dart';
+import '../../utils/number_formatters.dart';
 
 class AllSpendingScreen extends ConsumerStatefulWidget {
   const AllSpendingScreen({super.key});
@@ -142,7 +143,7 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
             child: Column(
               children: [
                 const Text('Net Total', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text('₱${net.toStringAsFixed(2)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                Text('₱${net.toCurrency()}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 Text('${txs.length} transactions', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
               ],
             ),
@@ -191,7 +192,7 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
           ),
         ),
         const SizedBox(width: 8),
-        Text('₱${amount.toStringAsFixed(0)}', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        Text('₱${amount.toCurrency()}', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -267,14 +268,14 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
                         children: [
                           Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
-                          Text('₱${(pInc - pExp).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text('₱${(pInc - pExp).toCurrency()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         ],
                       ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text('▼ ₱${pExp.toStringAsFixed(2)}', style: const TextStyle(color: Colors.red, fontSize: 12)),
-                          Text('▲ ₱${pInc.toStringAsFixed(2)}', style: const TextStyle(color: Colors.green, fontSize: 12)),
+                          Text('▼ ₱${pExp.toCurrency()}', style: const TextStyle(color: Colors.red, fontSize: 12)),
+                          Text('▲ ₱${pInc.toCurrency()}', style: const TextStyle(color: Colors.green, fontSize: 12)),
                         ],
                       )
                     ],

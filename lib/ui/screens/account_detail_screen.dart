@@ -8,6 +8,7 @@ import '../../domain/models/account.dart';
 import '../../domain/models/transaction_item.dart';
 import '../../domain/models/category.dart';
 import '../../domain/models/interest_tier.dart';
+import '../../utils/number_formatters.dart';
 
 class AccountDetailScreen extends ConsumerStatefulWidget {
   final int accountId;
@@ -252,7 +253,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                               padding: const EdgeInsets.only(top: 8.0),
                               child: _isEditing 
                                 ? _buildField(_adbCtrl, 'Current ADB (₱)', isNum: true, enabled: true, colorScheme: colorScheme)
-                                : _buildStaticField('Current ADB', '₱${acc.interestRate?.toStringAsFixed(2) ?? "0.00"}', colorScheme),
+                                : _buildStaticField('Current ADB', '₱${acc.interestRate?.toCurrency() ?? "0.00"}', colorScheme),
                             ),
 
                           const SizedBox(height: 16),
@@ -273,7 +274,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                               itemCount: _tiers.length,
                               itemBuilder: (ctx, i) => ListTile(
                                 dense: true, contentPadding: EdgeInsets.zero,
-                                title: Text('> ₱${_tiers[i].threshold.toStringAsFixed(2)}'),
+                                title: Text('> ₱${_tiers[i].threshold.toCurrency()}'),
                                 subtitle: Text('${_tiers[i].rate}% p.a.'),
                                 trailing: _isEditing ? IconButton(icon: Icon(Icons.delete, color: colorScheme.error, size: 20), onPressed: () => setState(() => _tiers.removeAt(i))) : null,
                               ),
@@ -290,7 +291,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('${((acc.balance / acc.goalBalance!) * 100).toStringAsFixed(1)}% Saved', style: const TextStyle(fontSize: 12)),
-                        Text('₱${(acc.goalBalance! - acc.balance).clamp(0.0, double.infinity).toStringAsFixed(2)} Left', style: const TextStyle(fontSize: 12)),
+                        Text('₱${(acc.goalBalance! - acc.balance).clamp(0.0, double.infinity).toCurrency()} Left', style: const TextStyle(fontSize: 12)),
                       ],
                     ),
                   ],
@@ -382,7 +383,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                           double available = acc.creditLimit! - acc.balance - unbilled;
                           return Align(
                             alignment: Alignment.centerLeft, 
-                            child: Text('Available Credit: ₱${available.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary, fontSize: 12))
+                            child: Text('Available Credit: ₱${available.toCurrency()}', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary, fontSize: 12))
                           );
                         }
                       ),
@@ -458,7 +459,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                           const Text('Current Statement', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                           Text('Billed On: ${DateFormat('MMM dd').format(currentBillEnd)}', style: const TextStyle(fontSize: 12)),
                           Text('Due: ${DateFormat('MMM dd, yyyy').format(currentDueDate)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          Text('Total Spend: ₱${currentSpend.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, color: Colors.red)),
+                          Text('Total Spend: ₱${currentSpend.toCurrency()}', style: const TextStyle(fontSize: 16, color: Colors.red)),
                         ],
                       ),
                       const Icon(Icons.chevron_right),
@@ -496,7 +497,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                           const Text('Payment Due', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                           Text('Billed On: ${DateFormat('MMM dd').format(previousBillEnd)}', style: const TextStyle(fontSize: 12)),
                           Text('Due: ${DateFormat('MMM dd, yyyy').format(previousDueDate)}', style: const TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
-                          Text('Total Due: ₱${previousSpend.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, color: Colors.red)),
+                          Text('Total Due: ₱${previousSpend.toCurrency()}', style: const TextStyle(fontSize: 16, color: Colors.red)),
                         ],
                       ),
                       const Icon(Icons.chevron_right),
@@ -536,7 +537,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
               ],
             ),
             subtitle: Text('${tx.type.toUpperCase()} • $dateStr', style: const TextStyle(fontSize: 10)),
-            trailing: Text('₱${_calculateImpact(tx).toStringAsFixed(2)}', style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
+            trailing: Text('₱${_calculateImpact(tx).toCurrency()}', style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
             onTap: () => context.push('/transaction-form', extra: tx),
           );
         }),
@@ -562,11 +563,11 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Next: ₱${nextAmount.toStringAsFixed(2)} | Total: ₱${tx.amount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12)),
+                Text('Next: ₱${nextAmount.toCurrency()} | Total: ₱${tx.amount.toCurrency()}', style: const TextStyle(fontSize: 12)),
                 const SizedBox(height: 4),
                 LinearProgressIndicator(value: total == 0 ? 0 : current / total),
                 const SizedBox(height: 4),
-                Text('Left: ₱${(tx.amount - (nextAmount * current)).toStringAsFixed(2)}', style: const TextStyle(fontSize: 12)),
+                Text('Left: ₱${(tx.amount - (nextAmount * current)).toCurrency()}', style: const TextStyle(fontSize: 12)),
               ],
             ),
             trailing: Row(
@@ -629,7 +630,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
               ],
             ),
             subtitle: Text('${tx.type.toUpperCase()} • $dateStr', style: const TextStyle(fontSize: 10)),
-            trailing: Text('₱${_calculateImpact(tx).toStringAsFixed(2)}', style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
+            trailing: Text('₱${_calculateImpact(tx).toCurrency()}', style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
           );
         },
         childCount: txs.length,
