@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../state/providers.dart';
 import '../../domain/models/category.dart';
 import '../../domain/models/transaction_item.dart';
+import '../../utils/number_formatters.dart';
 
 class TransactionListScreen extends ConsumerStatefulWidget {
   const TransactionListScreen({super.key});
@@ -175,7 +176,7 @@ class _TransactionListScreenState extends ConsumerState<TransactionListScreen> {
                 ),
                 subtitle: Text('${tx.type.toUpperCase()} • $dateStr'),
                 trailing: Text(
-                  '₱${_calculateImpact(tx).toStringAsFixed(2)}',
+                  '₱${_calculateImpact(tx).toCurrency()}',
                   style: TextStyle(
                     color: tx.type == 'income' ? Colors.green : Colors.red,
                     fontWeight: FontWeight.bold,

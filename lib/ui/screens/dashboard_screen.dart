@@ -8,6 +8,7 @@ import '../../state/providers.dart';
 import '../../domain/models/category.dart';
 import '../../domain/models/transaction_item.dart';
 import '../../services/interest_service.dart';
+import '../../utils/number_formatters.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -145,7 +146,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                               ),
                               Text(acc.provider, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                               const Spacer(),
-                              Text('₱${acc.balance.toStringAsFixed(2)}', style: TextStyle(fontSize: 16, color: ['Credit', 'Loans'].contains(acc.type) ? Colors.red : Colors.green)),
+                              Text('₱${acc.balance.toCurrency()}', style: TextStyle(fontSize: 16, color: ['Credit', 'Loans'].contains(acc.type) ? Colors.red : Colors.green)),
                             ],
                           ),
                         ),
@@ -204,7 +205,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                         ],
                       ),
                       subtitle: Text('${tx.type.toUpperCase()} • $dateStr'),
-                      trailing: Text('₱${_calculateImpact(tx).toStringAsFixed(2)}', style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+                      trailing: Text('₱${_calculateImpact(tx).toCurrency()}', style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
                     );
                   },
                 );
@@ -222,13 +223,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
       child: Column(
         children: [
           const Text('Total Net Worth', style: TextStyle(fontSize: 16)),
-          Text('₱${netWorth.toStringAsFixed(2)}', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: netWorth < 0 ? Colors.red : colorScheme.onSurface)),
+          Text('₱${netWorth.toCurrency()}', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: netWorth < 0 ? Colors.red : colorScheme.onSurface)),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              Column(children: [Text('Income', style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)), Text('₱${income.toStringAsFixed(2)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green))]),
-              Column(children: [Text('Expense', style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)), Text('₱${expense.toStringAsFixed(2)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red))]),
+              Column(children: [Text('Income', style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)), Text('₱${income.toCurrency()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green))]),
+              Column(children: [Text('Expense', style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)), Text('₱${expense.toCurrency()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red))]),
             ],
           ),
         ],
@@ -284,7 +285,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                 children: [
                   Text('Current Budget ($_budgetFreq)', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  Text('₱${left.clamp(0.0, double.infinity).toStringAsFixed(2)} left of ₱${_budgetAmount!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('₱${left.clamp(0.0, double.infinity).toStringAsFixed(2)} left of ₱${_budgetAmount!.toCurrency()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   
                   Stack(
@@ -315,8 +316,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                   const SizedBox(height: 16),
                   Text(
                     isOverBudget 
-                      ? 'You have exceeded your budget by ₱${(actualSpent - _budgetAmount!).toStringAsFixed(2)}.'
-                      : 'You can spend ₱${dailyAllowable.toStringAsFixed(2)}/day for $daysLeft more day(s).',
+                      ? 'You have exceeded your budget by ₱${(actualSpent - _budgetAmount!).toCurrency()}.'
+                      : 'You can spend ₱${dailyAllowable.toCurrency()}/day for $daysLeft more day(s).',
                     style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: colorScheme.onSurfaceVariant),
                     textAlign: TextAlign.center,
                   ),

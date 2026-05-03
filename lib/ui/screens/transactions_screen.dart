@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../state/providers.dart';
 import '../../domain/models/transaction_item.dart';
 import '../../domain/models/category.dart';
+import '../../utils/number_formatters.dart';
 
 class TransactionsScreen extends ConsumerStatefulWidget {
   const TransactionsScreen({super.key});
@@ -254,12 +255,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              Text('▼ ₱${expense.toStringAsFixed(2)}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-              Text('▲ ₱${income.toStringAsFixed(2)}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+              Text('▼ ₱${expense.toCurrency()}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              Text('▲ ₱${income.toCurrency()}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(color: colorScheme.primary, borderRadius: BorderRadius.circular(12)),
-                child: Text('= ₱${net.toStringAsFixed(2)}', style: TextStyle(color: colorScheme.onPrimary, fontWeight: FontWeight.bold)),
+                child: Text('= ₱${net.toCurrency()}', style: TextStyle(color: colorScheme.onPrimary, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -298,7 +299,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                             title: Text(titleText, style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: tx.note != null ? Text(tx.note!) : null,
                             trailing: Text(
-                              '${tx.type == 'expense' ? '-' : '+'}₱${_getDisplayAmount(tx).toStringAsFixed(2)}',
+                              '${tx.type == 'expense' ? '-' : '+'}₱${_getDisplayAmount(tx).toCurrency()}}',
                               style: TextStyle(
                                 color: tx.type == 'expense' ? Colors.red : Colors.green,
                                 fontWeight: FontWeight.bold,
