@@ -174,7 +174,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
             
             transactionsAsync.when(
               loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (err, stack) => const SizedBox.shrink(),
               data: (transactionsData) {
                 if (transactionsData.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(16), child: Text('No transactions recorded.')));
                 final categories = categoriesAsync.value ?? [];
@@ -214,6 +214,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+          onPressed: () async {
+            // Wait for the user to finish adding the transaction
+            await context.push('/transaction-form');
+            
+            // Force the dashboard to recalculate the budget and net worth
+            if (mounted) {
+              _handleRefresh(); 
+            }
+          },
+          child: const Icon(Icons.add),
+        ),
+        // END OF NEW BLOCK
     );
   }
 
@@ -271,57 +284,76 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
         children: [
           const Text('Budget Overview', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 8),
-          Card(
-            color: isOverBudget ? colorScheme.errorContainer : colorScheme.surfaceContainerHighest,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              side: BorderSide(color: isOverBudget ? colorScheme.error : colorScheme.primary),
+          // Locate the InkWell in _buildBudgetSection and update the onTap function:
+            InkWell(
               borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Current Budget ($_budgetFreq)', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text('₱${left.clamp(0.0, double.infinity).toStringAsFixed(2)} left of ₱${_budgetAmount!.toCurrency()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  
-                  Stack(
-                    children: [
-                      Container(
-                        height: 10,
-                        decoration: BoxDecoration(color: colorScheme.surfaceContainer, borderRadius: BorderRadius.circular(5)),
-                      ),
-                      FractionallySizedBox(
-                        widthFactor: progress.clamp(0.0, 1.0),
-                        child: Container(
+              onTap: () async {
+                // Add 'await' to pause execution here until the user leaves the details screen
+                await context.push('/budget-details', extra: {
+                  'amount': _budgetAmount,
+                  'freq': _budgetFreq,
+                  'start': _budgetStart,
+                  'spent': actualSpent,
+                  'transactions': allTxs.where((t) => t.type == 'expense' && t.date >= pStart.millisecondsSinceEpoch && t.date < pEnd.millisecondsSinceEpoch).toList(),
+                });
+                
+                // When the user returns to this screen, force a reload of the preferences
+                if (mounted) {
+                  _loadBudget();
+                }
+              },
+              child: Card(
+              color: isOverBudget ? colorScheme.errorContainer : colorScheme.surfaceContainerHighest,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                side: BorderSide(color: isOverBudget ? colorScheme.error : colorScheme.primary),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Current Budget ($_budgetFreq)', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text('₱${left.clamp(0.0, double.infinity).toCurrency()} left of ₱${_budgetAmount!.toCurrency()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    
+                    Stack(
+                      children: [
+                        Container(
                           height: 10,
-                          decoration: BoxDecoration(color: isOverBudget ? colorScheme.error : colorScheme.primary, borderRadius: BorderRadius.circular(5)),
+                          decoration: BoxDecoration(color: colorScheme.surfaceContainer, borderRadius: BorderRadius.circular(5)),
                         ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(DateFormat('MMM dd').format(pStart), style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
-                      Text('${(progress * 100).toStringAsFixed(0)}% Spent', style: TextStyle(fontSize: 12, color: isOverBudget ? colorScheme.error : colorScheme.primary, fontWeight: FontWeight.bold)),
-                      Text(DateFormat('MMM dd').format(pEnd.subtract(const Duration(days: 1))), style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    isOverBudget 
-                      ? 'You have exceeded your budget by ₱${(actualSpent - _budgetAmount!).toCurrency()}.'
-                      : 'You can spend ₱${dailyAllowable.toCurrency()}/day for $daysLeft more day(s).',
-                    style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: colorScheme.onSurfaceVariant),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+                        FractionallySizedBox(
+                          widthFactor: progress.clamp(0.0, 1.0),
+                          child: Container(
+                            height: 10,
+                            decoration: BoxDecoration(color: isOverBudget ? colorScheme.error : colorScheme.primary, borderRadius: BorderRadius.circular(5)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(DateFormat('MMM dd').format(pStart), style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                        Text('${(progress * 100).toStringAsFixed(0)}% Spent', style: TextStyle(fontSize: 12, color: isOverBudget ? colorScheme.error : colorScheme.primary, fontWeight: FontWeight.bold)),
+                        Text(DateFormat('MMM dd').format(pEnd.subtract(const Duration(days: 1))), style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      isOverBudget 
+                        ? 'You have exceeded your budget by ₱${(actualSpent - _budgetAmount!).toCurrency()}.'
+                        : 'You can spend ₱${dailyAllowable.toCurrency()}/day for $daysLeft more day(s).',
+                      style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: colorScheme.onSurfaceVariant),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

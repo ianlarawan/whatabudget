@@ -10,10 +10,12 @@ import 'ui/screens/category_manager_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/screens/onboarding_screen.dart';
 import 'ui/screens/statement_detail_screen.dart';
+import 'ui/screens/budget_detail_screen.dart';
 import 'domain/models/transaction_item.dart';
 import 'services/backup_service.dart';
 import 'state/providers.dart';
 import 'state/theme_provider.dart';
+import 'ui/screens/edit_budget_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,6 +71,30 @@ final _router = GoRouter(
         );
       },
     ),
+    GoRoute(
+      path: '/budget-details',
+      builder: (context, state) {
+        final data = state.extra as Map<String, dynamic>;
+        return BudgetDetailScreen(
+          targetAmount: data['amount'],
+          frequency: data['freq'],
+          startDate: data['start'],
+          spentAmount: data['spent'],
+          transactions: data['transactions'],
+        );
+      },
+    ),
+    GoRoute(
+      path: '/edit-budget',
+      builder: (context, state) {
+        final data = state.extra as Map<String, dynamic>;
+        return EditBudgetScreen(
+          currentAmount: data['amount'],
+          currentFreq: data['freq'],
+          currentStart: data['start'],
+        );
+      },
+    ),
   ],
 );
 
@@ -111,7 +137,7 @@ class FinanceApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'What-A-Budget',
-      debugShowCheckedModeBanner: false, // Add this line
+      debugShowCheckedModeBanner: false,
       themeMode: mode,
       theme: lightTheme,
       darkTheme: isAmoled ? amoledTheme : darkTheme,

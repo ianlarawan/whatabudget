@@ -18,6 +18,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final TextEditingController _budgetCtrl = TextEditingController();
   String _budgetFreq = 'Monthly';
   bool _isRestoring = false;
+  DateTime _budgetStartDate = DateTime.now();
 
   @override
   void dispose() {
@@ -45,20 +46,35 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
-  Future<void> _saveBudgetAndContinue() async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    if (_budgetCtrl.text.isNotEmpty) {
-      double? amount = double.tryParse(_budgetCtrl.text);
-      if (amount != null && amount > 0) {
-        await prefs.setDouble('budget_amount', amount);
-        await prefs.setString('budget_frequency', _budgetFreq);
-        await prefs.setInt('budget_start_date', DateTime.now().millisecondsSinceEpoch);
-      }
-    }
-    
-    if (mounted) context.push('/add-account');
+  Future<void> _selectStartDate(BuildContext context) async {
+  final DateTime? picked = await showDatePicker(
+    context: context,
+    initialDate: _budgetStartDate,
+    firstDate: DateTime(2000),
+    lastDate: DateTime(2101),
+  );
+  if (picked != null && picked != _budgetStartDate) {
+    setState(() {
+      _budgetStartDate = picked;
+    });
   }
+}
+
+  Future<void> _saveBudgetAndContinue() async {
+  final prefs = await SharedPreferences.getInstance();
+  
+  if (_budgetCtrl.text.isNotEmpty) {
+    double? amount = double.tryParse(_budgetCtrl.text);
+    if (amount != null && amount > 0) {
+      await prefs.setDouble('budget_amount', amount);
+      await prefs.setString('budget_frequency', _budgetFreq);
+      // Replaced DateTime.now() with user selection
+      await prefs.setInt('budget_start_date', _budgetStartDate.millisecondsSinceEpoch);
+    }
+  }
+  
+  if (mounted) context.push('/add-account');
+}
 
   @override
   Widget build(BuildContext context) {
@@ -181,86 +197,105 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
-  Widget _buildBudgetPage(ColorScheme colorScheme) {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              _pageController.previousPage(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
-            },
-            padding: EdgeInsets.zero,
-            alignment: Alignment.centerLeft,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Set Your Budget',
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: colorScheme.primary),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Let\'s establish a baseline to track your spending. You can always change or skip this later in the dashboard.',
-            style: TextStyle(fontSize: 16, color: colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 32),
-          TextFormField(
-            controller: _budgetCtrl,
-            decoration: InputDecoration(
-              labelText: 'Target Budget Amount (₱)',
-              prefixIcon: const Icon(Icons.account_balance_wallet),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              filled: true,
-              fillColor: colorScheme.surfaceContainerHighest,
+    Widget _buildBudgetPage(ColorScheme colorScheme) {
+    return CustomScrollView(
+      slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    _pageController.previousPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
+                  padding: EdgeInsets.zero,
+                  alignment: Alignment.centerLeft,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Set Your Budget',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Let\'s establish a baseline to track your spending. You can always change or skip this later in the dashboard.',
+                  style: TextStyle(fontSize: 16, color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 32),
+                TextFormField(
+                  controller: _budgetCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Target Budget Amount (₱)',
+                    prefixIcon: const Icon(Icons.account_balance_wallet),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: colorScheme.surfaceContainerHighest,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+                  style: const TextStyle(fontSize: 18),
+                ),
+                const SizedBox(height: 24),
+                DropdownButtonFormField<String>(
+                  value: _budgetFreq,
+                  decoration: InputDecoration(
+                    labelText: 'Budget Frequency',
+                    prefixIcon: const Icon(Icons.calendar_month),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: colorScheme.surfaceContainerHighest,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Daily', child: Text('Daily')),
+                    DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
+                    DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
+                    DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+                    DropdownMenuItem(value: 'Yearly', child: Text('Yearly')),
+                  ],
+                  onChanged: (val) => setState(() => _budgetFreq = val!),
+                ),
+                const SizedBox(height: 24),
+                ListTile(
+                  title: const Text('Budget Start Date'),
+                  subtitle: Text('${_budgetStartDate.month}/${_budgetStartDate.day}/${_budgetStartDate.year}'),
+                  trailing: const Icon(Icons.calendar_today),
+                  shape: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: colorScheme.outline, width: 1),
+                  ),
+                  tileColor: colorScheme.surfaceContainerHighest,
+                  onTap: () => _selectStartDate(context),
+                ),
+                const Spacer(),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    minimumSize: const Size(double.infinity, 56),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: _saveBudgetAndContinue,
+                  child: const Text('Continue to Accounts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () => context.push('/add-account'),
+                  style: TextButton.styleFrom(minimumSize: const Size(double.infinity, 56)),
+                  child: const Text('Skip for now'),
+                ),
+                const SizedBox(height: 16),
+              ],
             ),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
-            style: const TextStyle(fontSize: 18),
           ),
-          const SizedBox(height: 24),
-          DropdownButtonFormField<String>(
-            value: _budgetFreq,
-            decoration: InputDecoration(
-              labelText: 'Budget Frequency',
-              prefixIcon: const Icon(Icons.calendar_month),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              filled: true,
-              fillColor: colorScheme.surfaceContainerHighest,
-            ),
-            items: const [
-              DropdownMenuItem(value: 'Daily', child: Text('Daily')),
-              DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
-              DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
-              DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
-              DropdownMenuItem(value: 'Yearly', child: Text('Yearly')),
-            ],
-            onChanged: (val) => setState(() => _budgetFreq = val!),
-          ),
-          const Spacer(),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              minimumSize: const Size(double.infinity, 56),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-            onPressed: _saveBudgetAndContinue,
-            child: const Text('Continue to Accounts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(height: 16),
-          TextButton(
-            onPressed: () => context.push('/add-account'),
-            style: TextButton.styleFrom(minimumSize: const Size(double.infinity, 56)),
-            child: const Text('Skip for now'),
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
