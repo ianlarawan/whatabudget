@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'dashboard_screen.dart';
 import 'transactions_screen.dart';
 import 'all_spending_screen.dart';
-import '../../utils/number_formatters.dart';
 
 class MainRootScreen extends StatefulWidget {
   const MainRootScreen({super.key});

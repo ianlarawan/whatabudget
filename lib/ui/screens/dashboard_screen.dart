@@ -7,6 +7,7 @@ import 'dart:math';
 import '../../state/providers.dart';
 import '../../domain/models/category.dart';
 import '../../domain/models/transaction_item.dart';
+import '../../domain/models/account.dart';
 import '../../services/interest_service.dart';
 import '../../utils/number_formatters.dart';
 
@@ -20,6 +21,63 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
   double? _budgetAmount;
   String? _budgetFreq;
   DateTime? _budgetStart;
+
+  // Helper: Filter for active spending only
+  bool _isBudgetTransaction(TransactionItem t, List<Category> categories) {
+    if (t.type != 'expense') return false;
+    
+    final cat = categories.firstWhere(
+      (c) => c.id == t.categoryId, 
+      orElse: () => Category(name: '', icon: '', type: '')
+    );
+    
+    final excludedCategories = ['Balance Adjustment', 'Transfer Fee', 'Interest Charges'];
+    if (excludedCategories.contains(cat.name)) return false;
+    if (t.note != null && t.note!.contains('Initial Balance')) return false;
+
+    return true;
+  }
+
+  // Helper: Calculate Due Date Countdown based on nearest deadline
+  String? _getDueDateCountdown(Account acc) {
+  if (!['Credit', 'Loans'].contains(acc.type) || acc.billingDate == null) return null;
+
+  final now = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+  DateTime targetDue;
+
+  if (acc.type == 'Credit') {
+    // Credit Logic: Billing Date + Offset days
+    final int billDay = acc.billingDate!;
+    final int offset = acc.dueDateOffset ?? 20;
+    
+    DateTime pDue = DateTime(now.year, now.month - 1, billDay).add(Duration(days: offset));
+    DateTime cDue = DateTime(now.year, now.month, billDay).add(Duration(days: offset));
+    DateTime nDue = DateTime(now.year, now.month + 1, billDay).add(Duration(days: offset));
+
+    if (!pDue.isBefore(now)) targetDue = pDue;
+    else if (!cDue.isBefore(now)) targetDue = cDue;
+    else targetDue = nDue;
+  } else {
+    // Loan Logic: dueDateOffset is the actual day of the month (e.g., 05)
+    final int dueDay = acc.dueDateOffset ?? acc.billingDate!;
+    
+    DateTime pDue = DateTime(now.year, now.month - 1, dueDay);
+    DateTime cDue = DateTime(now.year, now.month, dueDay);
+    DateTime nDue = DateTime(now.year, now.month + 1, dueDay);
+
+    // If Today is May 4 and cDue is May 5, it correctly picks May 5
+    if (!pDue.isBefore(now)) targetDue = pDue;
+    else if (!cDue.isBefore(now)) targetDue = cDue;
+    else targetDue = nDue;
+  }
+
+  final daysLeft = targetDue.difference(now).inDays;
+
+  if (daysLeft == 0) return 'due today';
+  if (daysLeft == 1) return 'due tomorrow';
+  if (daysLeft < 0) return 'overdue';
+  return 'due in $daysLeft days';
+}
 
   @override
   void initState() {
@@ -93,8 +151,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     }
 
     final transactions = transactionsAsync.value ?? [];
-    double totalIncome = transactions.where((t) => t.type == 'income').fold(0, (sum, t) => sum + _calculateImpact(t));
-    double totalExpense = transactions.where((t) => t.type == 'expense').fold(0, (sum, t) => sum + _calculateImpact(t));
+    final categories = categoriesAsync.value ?? [];
 
     return Scaffold(
       appBar: AppBar(
@@ -110,7 +167,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 16),
           children: [
-            _buildSummaryCard(netWorth, totalIncome, totalExpense, colorScheme),
+            _buildSummaryCard(netWorth, accounts, colorScheme),
             const Divider(),
             
             accountsAsync.when(
@@ -123,30 +180,69 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                   physics: const NeverScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(16.0),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2, childAspectRatio: 1.5, crossAxisSpacing: 8, mainAxisSpacing: 8,
+                    crossAxisCount: 2, childAspectRatio: 1.25, crossAxisSpacing: 8, mainAxisSpacing: 8,
                   ),
                   itemCount: accountsData.length,
                   itemBuilder: (context, index) {
                     final acc = accountsData[index];
+                    final countdown = _getDueDateCountdown(acc);
+                    final bool isDebt = ['Credit', 'Loans'].contains(acc.type);
+                    String balanceLabel = isDebt ? "Total Owed" : "Balance";
+
                     return InkWell(
                       onTap: () => context.push('/account/${acc.id}'),
+                      borderRadius: BorderRadius.circular(12),
                       child: Card(
                         child: Padding(
-                          padding: const EdgeInsets.all(8.0),
+                          padding: const EdgeInsets.all(12.0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Row(
                                 children: [
-                                  Text(acc.icon, style: const TextStyle(fontSize: 20)),
+                                  Text(acc.icon, style: const TextStyle(fontSize: 18)),
                                   const SizedBox(width: 8),
-                                  Expanded(child: Text(acc.name, style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                  Expanded(
+                                    child: Text(
+                                      acc.name, 
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), 
+                                      maxLines: 1, 
+                                      overflow: TextOverflow.ellipsis
+                                    ),
+                                  ),
                                 ],
                               ),
-                              Text(acc.provider, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                              Text(
+                                '${acc.provider} • ${acc.type}', 
+                                style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (countdown != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2.0),
+                                  child: Text(
+                                    countdown,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: countdown.contains('overdue') ? Colors.red : Colors.orange,
+                                    ),
+                                  ),
+                                ),
                               const Spacer(),
-                              Text('₱${acc.balance.toCurrency()}', style: TextStyle(fontSize: 16, color: ['Credit', 'Loans'].contains(acc.type) ? Colors.red : Colors.green)),
+                              Text(
+                                balanceLabel,
+                                style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                              ),
+                              Text(
+                                '₱${acc.balance.toCurrency()}', 
+                                style: TextStyle(
+                                  fontSize: 18, 
+                                  fontWeight: FontWeight.w900,
+                                  color: isDebt ? Colors.red : Colors.green
+                                )
+                              ),
                             ],
                           ),
                         ),
@@ -158,7 +254,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
             ),
             
             const Divider(),
-            _buildBudgetSection(transactions, colorScheme),
+            _buildBudgetSection(transactions, categories, colorScheme),
             const Divider(),
             
             Padding(
@@ -177,7 +273,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
               error: (err, stack) => const SizedBox.shrink(),
               data: (transactionsData) {
                 if (transactionsData.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(16), child: Text('No transactions recorded.')));
-                final categories = categoriesAsync.value ?? [];
                 
                 return ListView.builder(
                   shrinkWrap: true,
@@ -205,7 +300,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                         ],
                       ),
                       subtitle: Text('${tx.type.toUpperCase()} • $dateStr'),
-                      trailing: Text('₱${_calculateImpact(tx).toCurrency()}', style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+                      trailing: Text(
+                        '₱${_calculateImpact(tx).toCurrency()}', 
+                        style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold)
+                      ),
                     );
                   },
                 );
@@ -216,33 +314,49 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
       ),
       floatingActionButton: FloatingActionButton(
           onPressed: () async {
-            // Wait for the user to finish adding the transaction
             await context.push('/transaction-form');
-            
-            // Force the dashboard to recalculate the budget and net worth
-            if (mounted) {
-              _handleRefresh(); 
-            }
+            if (mounted) _handleRefresh(); 
           },
           child: const Icon(Icons.add),
         ),
-        // END OF NEW BLOCK
     );
   }
 
-  Widget _buildSummaryCard(double netWorth, double income, double expense, ColorScheme colorScheme) {
+  Widget _buildSummaryCard(double netWorth, List<Account> accounts, ColorScheme colorScheme) {
+    double liquidAssets = accounts
+        .where((a) => !['Credit', 'Loans'].contains(a.type))
+        .fold(0, (sum, a) => sum + a.balance);
+
+    double totalDebt = accounts
+        .where((a) => ['Credit', 'Loans'].contains(a.type))
+        .fold(0, (sum, a) => sum + a.balance);
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
           const Text('Total Net Worth', style: TextStyle(fontSize: 16)),
-          Text('₱${netWorth.toCurrency()}', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: netWorth < 0 ? Colors.red : colorScheme.onSurface)),
+          Text(
+            '₱${netWorth.toCurrency()}',
+            style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: netWorth < 0 ? Colors.red : colorScheme.onSurface),
+          ),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              Column(children: [Text('Income', style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)), Text('₱${income.toCurrency()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green))]),
-              Column(children: [Text('Expense', style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)), Text('₱${expense.toCurrency()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red))]),
+              Column(
+                children: [
+                  Text('Liquid Assets', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                  Text('₱${liquidAssets.toCurrency()}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)),
+                ],
+              ),
+              Container(height: 30, width: 1, color: colorScheme.outlineVariant),
+              Column(
+                children: [
+                  Text('Total Debt', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                  Text('₱${totalDebt.toCurrency()}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+                ],
+              ),
             ],
           ),
         ],
@@ -250,7 +364,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     );
   }
 
-  Widget _buildBudgetSection(List<TransactionItem> allTxs, ColorScheme colorScheme) {
+  Widget _buildBudgetSection(List<TransactionItem> allTxs, List<Category> categories, ColorScheme colorScheme) {
     if (_budgetAmount == null || _budgetFreq == null || _budgetStart == null) return const SizedBox.shrink();
 
     DateTime now = DateTime.now();
@@ -268,7 +382,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     }
 
     double actualSpent = allTxs
-        .where((t) => t.type == 'expense' && t.date >= pStart.millisecondsSinceEpoch && t.date < pEnd.millisecondsSinceEpoch)
+        .where((t) => 
+            t.date >= pStart.millisecondsSinceEpoch && 
+            t.date < pEnd.millisecondsSinceEpoch &&
+            _isBudgetTransaction(t, categories))
         .fold(0.0, (s, t) => s + _calculateImpact(t));
 
     double left = _budgetAmount! - actualSpent;
@@ -284,25 +401,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
         children: [
           const Text('Budget Overview', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 8),
-          // Locate the InkWell in _buildBudgetSection and update the onTap function:
-            InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () async {
-                // Add 'await' to pause execution here until the user leaves the details screen
-                await context.push('/budget-details', extra: {
-                  'amount': _budgetAmount,
-                  'freq': _budgetFreq,
-                  'start': _budgetStart,
-                  'spent': actualSpent,
-                  'transactions': allTxs.where((t) => t.type == 'expense' && t.date >= pStart.millisecondsSinceEpoch && t.date < pEnd.millisecondsSinceEpoch).toList(),
-                });
-                
-                // When the user returns to this screen, force a reload of the preferences
-                if (mounted) {
-                  _loadBudget();
-                }
-              },
-              child: Card(
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () async {
+              await context.push('/budget-details', extra: {
+                'amount': _budgetAmount,
+                'freq': _budgetFreq,
+                'start': _budgetStart,
+                'spent': actualSpent,
+                'transactions': allTxs.where((t) => 
+                  t.date >= pStart.millisecondsSinceEpoch && 
+                  t.date < pEnd.millisecondsSinceEpoch && 
+                  _isBudgetTransaction(t, categories)).toList(),
+              });
+              if (mounted) _loadBudget();
+            },
+            child: Card(
               color: isOverBudget ? colorScheme.errorContainer : colorScheme.surfaceContainerHighest,
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -318,7 +432,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                     const SizedBox(height: 4),
                     Text('₱${left.clamp(0.0, double.infinity).toCurrency()} left of ₱${_budgetAmount!.toCurrency()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
-                    
                     Stack(
                       children: [
                         Container(
@@ -334,7 +447,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                         ),
                       ],
                     ),
-                    
                     const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,

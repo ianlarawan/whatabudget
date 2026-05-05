@@ -46,38 +46,60 @@ class AccountNotifier extends AsyncNotifier<List<Account>> {
   FutureOr<List<Account>> build() async => ref.read(financeRepositoryProvider).getAccounts();
 
   Future<void> addAccount(Account account, {double? prevBalance, double? currBalance}) async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
-      final repository = ref.read(financeRepositoryProvider);
-      await repository.insertAccount(account);
-      
-      final accounts = await repository.getAccounts();
-      final newAcc = accounts.last;
-      final cats = await repository.getCategories();
+  state = const AsyncValue.loading();
+  state = await AsyncValue.guard(() async {
+    final repository = ref.read(financeRepositoryProvider);
+    await repository.insertAccount(account);
+    
+    final accounts = await repository.getAccounts();
+    final newAcc = accounts.last;
+    final cats = await repository.getCategories();
+    final adjCat = cats.firstWhere((c) => c.name == 'Balance Adjustment', orElse: () => cats.first);
 
-      if (['Credit', 'Loans'].contains(newAcc.type)) {
-        final adjCat = cats.firstWhere((c) => c.name == 'Balance Adjustment' && c.type == 'expense', orElse: () => cats.first);
-        final now = DateTime.now();
-        final billDay = newAcc.billingDate ?? 1;
-        final previousBillEnd = DateTime(now.year, now.month - 1, billDay);
+    if (['Credit', 'Loans'].contains(newAcc.type)) {
+      final now = DateTime.now();
+      final int billDay = newAcc.billingDate ?? 1;
 
-        if (prevBalance != null && prevBalance > 0) {
-          final prevDate = previousBillEnd.subtract(const Duration(days: 1));
-          await repository.insertTransaction(TransactionItem(amount: prevBalance, type: 'expense', categoryId: adjCat.id!, accountId: newAcc.id!, date: prevDate.millisecondsSinceEpoch, note: 'Previous Balance (Due)'));
-        }
-        if (currBalance != null && currBalance > 0) {
-          await repository.insertTransaction(TransactionItem(amount: currBalance, type: 'expense', categoryId: adjCat.id!, accountId: newAcc.id!, date: now.millisecondsSinceEpoch, note: 'Current Balance (Unbilled)'));
-        }
-      } else {
-        if (newAcc.balance > 0) {
-          final adjCat = cats.firstWhere((c) => c.name == 'Balance Adjustment' && c.type == 'income', orElse: () => cats.first);
-          await repository.insertTransaction(TransactionItem(amount: newAcc.balance, type: 'income', categoryId: adjCat.id!, accountId: newAcc.id!, date: DateTime.now().millisecondsSinceEpoch, note: 'Initial Balance'));
-        }
+      if (prevBalance != null && prevBalance > 0) {
+        // Fix: Date this 1 day BEFORE the previous billing date 
+        // to ensure it is deep within the "Previous" period.
+        final prevBillingDate = DateTime(now.year, now.month - 1, billDay);
+        final historicalDate = prevBillingDate.subtract(const Duration(days: 1));
+
+        await repository.insertTransaction(TransactionItem(
+          amount: prevBalance,
+          type: 'expense',
+          categoryId: adjCat.id!,
+          accountId: newAcc.id!,
+          date: historicalDate.millisecondsSinceEpoch,
+          note: 'Initial Balance (Previous Statement)'
+        ));
       }
-      ref.invalidate(transactionsProvider);
-      return repository.getAccounts();
-    });
-  }
+
+      if (currBalance != null && currBalance > 0) {
+        await repository.insertTransaction(TransactionItem(
+          amount: currBalance,
+          type: 'expense',
+          categoryId: adjCat.id!,
+          accountId: newAcc.id!,
+          date: now.millisecondsSinceEpoch,
+          note: 'Initial Balance (Current Statement)'
+        ));
+      }
+    } else {
+      // Logic for standard Savings/Wallet...
+      if (newAcc.balance > 0) {
+        final adjCat = cats.firstWhere((c) => c.name == 'Balance Adjustment' && c.type == 'income', orElse: () => cats.first);
+        await repository.insertTransaction(TransactionItem(
+          amount: newAcc.balance, type: 'income', categoryId: adjCat.id!, accountId: newAcc.id!, 
+          date: DateTime.now().millisecondsSinceEpoch, note: 'Initial Balance'
+        ));
+      }
+    }
+    ref.invalidate(transactionsProvider);
+    return repository.getAccounts();
+  });
+}
 
   Future<void> updateAccount(Account updatedAccount, {double? oldBalance}) async {
     state = const AsyncValue.loading();

@@ -22,6 +22,31 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   Set<int> _selectedCategories = {};
 
+  // Helper: Filter for active financial activity only
+  // Helper: Filter for active financial activity only
+  bool _isRealActivity(TransactionItem t, List<Category> categories) {
+    // Find the category for this transaction
+    final cat = categories.firstWhere(
+      (c) => c.id == t.categoryId, 
+      orElse: () => Category(name: '', icon: '', type: '')
+    );
+    
+    // 1. Exclude administrative categories
+    final excludedCategories = ['Balance Adjustment', 'Transfer Fee'];
+    if (excludedCategories.contains(cat.name)) return false;
+    
+    // 2. Exclude setup/initial balance notes
+    // Updated to include the new detailed notes for Credit/Loans
+    if (t.note != null) {
+      final note = t.note!;
+      if (note.contains('Initial Balance')) return false;
+      if (note.contains('Initial Balance (Previous Statement)')) return false;
+      if (note.contains('Initial Balance (Current Statement)')) return false;
+    }
+
+    return true;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -236,8 +261,15 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
     monthTxs.sort((a, b) => b.date.compareTo(a.date));
 
-    double expense = monthTxs.where((t) => t.type == 'expense').fold(0.0, (s, t) => s + _getDisplayAmount(t));
-    double income = monthTxs.where((t) => t.type == 'income').fold(0.0, (s, t) => s + _getDisplayAmount(t));
+    // Refined Stats: Filtered for "Real" activity to prevent setup bloat
+    double expense = monthTxs
+        .where((t) => t.type == 'expense' && _isRealActivity(t, cats))
+        .fold(0.0, (s, t) => s + _getDisplayAmount(t));
+        
+    double income = monthTxs
+        .where((t) => t.type == 'income' && _isRealActivity(t, cats))
+        .fold(0.0, (s, t) => s + _getDisplayAmount(t));
+        
     double net = income - expense;
 
     Map<String, List<TransactionItem>> grouped = {};
@@ -299,7 +331,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                             title: Text(titleText, style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: tx.note != null ? Text(tx.note!) : null,
                             trailing: Text(
-                              '${tx.type == 'expense' ? '-' : '+'}₱${_getDisplayAmount(tx).toCurrency()}}',
+                              '${tx.type == 'expense' ? '-' : '+'}₱${_getDisplayAmount(tx).toCurrency()}',
                               style: TextStyle(
                                 color: tx.type == 'expense' ? Colors.red : Colors.green,
                                 fontWeight: FontWeight.bold,
