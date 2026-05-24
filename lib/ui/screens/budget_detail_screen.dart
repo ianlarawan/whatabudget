@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../domain/models/transaction_item.dart';
+import '../../domain/models/category.dart';
 import '../../utils/number_formatters.dart';
-import 'package:go_router/go_router.dart';
 
 class BudgetDetailScreen extends StatelessWidget {
   final double targetAmount;
   final String frequency;
   final DateTime startDate;
   final double spentAmount;
+  final List<Category> categories; // Added categories dependency
   final List<TransactionItem> transactions;
 
   const BudgetDetailScreen({
@@ -18,132 +19,251 @@ class BudgetDetailScreen extends StatelessWidget {
     required this.frequency,
     required this.startDate,
     required this.spentAmount,
+    required this.categories,
     required this.transactions,
   });
+
+  double _calculateImpact(TransactionItem t) {
+    if (t.isInstallment && t.installmentTotal != null && t.installmentTotal! > 0) {
+      return t.amount / t.installmentTotal!;
+    }
+    return t.amount;
+  }
+
+  Color _getCategoryColor(int index) {
+    final List<Color> colors = [
+      Colors.orange,
+      Colors.blue,
+      Colors.purple,
+      Colors.teal,
+      Colors.amber,
+      Colors.indigo,
+      Colors.pink,
+      Colors.cyan,
+      Colors.deepPurple,
+      Colors.lightGreen,
+    ];
+    return colors[index % colors.length];
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final double leftAmount = targetAmount - spentAmount;
-    final double percentageSpent = (spentAmount / targetAmount).clamp(0.0, 1.0);
-    final bool isOverBudget = spentAmount > targetAmount;
+    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    // 1. Group transactions and aggregate totals by Category ID
+    final Map<int, double> categorySums = {};
+    for (var tx in transactions) {
+      final double impact = _calculateImpact(tx);
+      categorySums[tx.categoryId] = (categorySums[tx.categoryId] ?? 0.0) + impact;
+    }
+
+    int colorIdx = 0;
+    final List<PieChartSectionData> chartSections = [];
+    final List<Widget> legendItems = [];
+
+    // 2. Build chart items using actual master category names and metrics
+    categorySums.forEach((catId, totalValue) {
+      final currentSectionColor = _getCategoryColor(colorIdx);
+      
+      // Dynamic master lookup translation
+      final matchedCategory = categories.firstWhere(
+        (c) => c.id == catId,
+        orElse: () => Category(name: 'Other Expenses', icon: '💸', type: 'expense'),
+      );
+
+      chartSections.add(PieChartSectionData(
+        color: currentSectionColor,
+        value: totalValue,
+        title: '', 
+        radius: 25,
+      ));
+
+      legendItems.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6.0),
+          child: Row(
+            children: [
+              Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: currentSectionColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Category Icon Display
+              Text(matchedCategory.icon, style: const TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              // Category Name Display (Groups multiple transactions into a single entry name)
+              Expanded(
+                child: Text(
+                  matchedCategory.name,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text(
+                '₱${totalValue.toCurrency()}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      colorIdx++;
+    });
+
+    // 3. Append remaining unused allowance slice
+    final double unspentAmount = targetAmount - spentAmount;
+    if (unspentAmount > 0) {
+      final Color unspentColor = isDarkMode ? Colors.grey.shade800 : Colors.grey.shade300;
+      
+      chartSections.add(PieChartSectionData(
+        color: unspentColor,
+        value: unspentAmount,
+        title: '',
+        radius: 25,
+      ));
+
+      legendItems.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6.0),
+          child: Row(
+            children: [
+              Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: unspentColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text('🏳️', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Unused Allowance',
+                  style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic, color: Colors.grey),
+                ),
+              ),
+              Text(
+                '₱${unspentAmount.toCurrency()}',
+                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
-      // Locate your AppBar actions and modify the onPressed function:
       appBar: AppBar(
-        title: const Text('Budget Details'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () async {
-              // Wait for the Edit screen to pop
-              final bool? changesMade = await context.push<bool>('/edit-budget', extra: {
-                'amount': targetAmount,
-                'freq': frequency,
-                'start': startDate,
-              });
+        title: const Text('Budget Progress Breakdown'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          Card(
+            elevation: 0,
+            color: colorScheme.surfaceContainerLow,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24.0),
+              child: SizedBox(
+                height: 180,
+                child: Stack(
+                  children: [
+                    PieChart(
+                      PieChartData(
+                        sections: chartSections.isEmpty 
+                            ? [PieChartSectionData(color: Colors.grey.shade400, value: 1, radius: 25, title: '')]
+                            : chartSections,
+                        centerSpaceRadius: 65,
+                        sectionsSpace: 2,
+                        startDegreeOffset: -90,
+                      ),
+                    ),
+                    Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '₱${spentAmount.toCurrency()}',
+                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                          ),
+                          Text(
+                            'Spent of ₱${targetAmount.toCurrency()}',
+                            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Distribution Guide',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: colorScheme.primary),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            elevation: 1,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: legendItems.isEmpty
+                  ? const Center(child: Text('No structured transactions recorded in this cycle.'))
+                  : Column(
+                      children: legendItems,
+                    ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Cycle History Logs',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          ),
+          const SizedBox(height: 8),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: transactions.length,
+            itemBuilder: (context, index) {
+              final tx = transactions[index];
+              final dateStr = DateFormat('MMM dd, yyyy').format(DateTime.fromMillisecondsSinceEpoch(tx.date));
+              
+              final txCategory = categories.firstWhere(
+                (c) => c.id == tx.categoryId,
+                orElse: () => Category(name: '', icon: '📝', type: 'expense'),
+              );
 
-              // If changes were made, immediately pop this screen to return to the dashboard
-              if (changesMade == true && context.mounted) {
-                context.pop();
-              }
+              return ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                // Prefixed the log view with the native category emoji for context
+                title: Text(
+                  '${txCategory.icon} ${tx.note ?? txCategory.name}', 
+                  style: const TextStyle(fontWeight: FontWeight.bold)
+                ),
+                subtitle: Text(dateStr),
+                trailing: Text(
+                  '₱${_calculateImpact(tx).toCurrency()}',
+                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                ),
+              );
             },
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header Segment
-              Text(
-                '₱${leftAmount.clamp(0.0, double.infinity).toCurrency()} left of ₱${targetAmount.toCurrency()}',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              LinearProgressIndicator(
-                value: percentageSpent,
-                minHeight: 12,
-                borderRadius: BorderRadius.circular(8),
-                backgroundColor: colorScheme.surfaceContainerHighest,
-                color: isOverBudget ? colorScheme.error : colorScheme.primary,
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: Text(
-                  'Current $frequency Cycle',
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Donut Chart Segment
-              if (transactions.isNotEmpty) ...[
-                SizedBox(
-                  height: 200,
-                  child: PieChart(
-                    PieChartData(
-                      sectionsSpace: 2,
-                      centerSpaceRadius: 60,
-                      sections: _generateChartSections(colorScheme),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-              ],
-
-              const Text('Transactions this cycle', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              const SizedBox(height: 16),
-
-              // Transaction List
-              if (transactions.isEmpty)
-                const Center(child: Text('No spending this cycle.'))
-              else
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: transactions.length,
-                  itemBuilder: (context, index) {
-                    final tx = transactions[index];
-                    final dateStr = DateFormat('MMM dd').format(DateTime.fromMillisecondsSinceEpoch(tx.date));
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: colorScheme.surfaceContainerHighest,
-                        child: Icon(Icons.receipt_long, color: colorScheme.primary),
-                      ),
-                      title: Text(tx.note?.isNotEmpty == true ? tx.note! : 'Expense'),
-                      subtitle: Text(dateStr),
-                      trailing: Text(
-                        '-₱${tx.amount.toCurrency()}',
-                        style: TextStyle(color: colorScheme.error, fontWeight: FontWeight.bold),
-                      ),
-                    );
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
     );
-  }
-
-  List<PieChartSectionData> _generateChartSections(ColorScheme colorScheme) {
-    // In a real scenario, you'd group transactions by Category ID here.
-    // For now, we visualize the chunks of individual transactions.
-    final List<Color> colors = [Colors.blue, Colors.pink, Colors.orange, Colors.green, Colors.purple];
-    
-    return transactions.asMap().entries.map((entry) {
-      final index = entry.key;
-      final tx = entry.value;
-      
-      return PieChartSectionData(
-        value: tx.amount,
-        color: colors[index % colors.length],
-        showTitle: false,
-        radius: 40,
-      );
-    }).toList();
   }
 }

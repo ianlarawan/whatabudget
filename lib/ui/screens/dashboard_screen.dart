@@ -23,7 +23,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
   DateTime? _budgetStart;
 
   // Helper: Filter for active spending only
-  bool _isBudgetTransaction(TransactionItem t, List<Category> categories) {
+bool _isBudgetTransaction(TransactionItem t, List<Category> categories) {
     if (t.type != 'expense') return false;
     
     final cat = categories.firstWhere(
@@ -31,7 +31,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
       orElse: () => Category(name: '', icon: '', type: '')
     );
     
-    final excludedCategories = ['Balance Adjustment', 'Transfer Fee', 'Interest Charges'];
+    // Added 'Credit/Loan Bill Payment' to prevent double deduction
+    final excludedCategories = [
+      'Balance Adjustment', 
+      'Transfer Fee', 
+      'Interest Charges', 
+      'Credit/Loan Bill Payment'
+    ];
     if (excludedCategories.contains(cat.name)) return false;
     if (t.note != null && t.note!.contains('Initial Balance')) return false;
 
@@ -403,12 +409,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
           const SizedBox(height: 8),
           InkWell(
             borderRadius: BorderRadius.circular(12),
+            // Inside dashboard_screen.dart -> _buildBudgetSection -> InkWell -> onTap:
             onTap: () async {
               await context.push('/budget-details', extra: {
                 'amount': _budgetAmount,
                 'freq': _budgetFreq,
                 'start': _budgetStart,
                 'spent': actualSpent,
+                'categories': categories, // ADD THIS LINE HERE
                 'transactions': allTxs.where((t) => 
                   t.date >= pStart.millisecondsSinceEpoch && 
                   t.date < pEnd.millisecondsSinceEpoch && 

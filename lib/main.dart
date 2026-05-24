@@ -71,6 +71,7 @@ final _router = GoRouter(
         );
       },
     ),
+// Inside main.dart router initialization:
     GoRoute(
       path: '/budget-details',
       builder: (context, state) {
@@ -80,6 +81,7 @@ final _router = GoRouter(
           frequency: data['freq'],
           startDate: data['start'],
           spentAmount: data['spent'],
+          categories: data['categories'], // ADD THIS LINE HERE
           transactions: data['transactions'],
         );
       },
@@ -87,11 +89,11 @@ final _router = GoRouter(
     GoRoute(
       path: '/edit-budget',
       builder: (context, state) {
-        final data = state.extra as Map<String, dynamic>;
+        final data = state.extra is Map<String, dynamic> ? state.extra as Map<String, dynamic> : null;
         return EditBudgetScreen(
-          currentAmount: data['amount'],
-          currentFreq: data['freq'],
-          currentStart: data['start'],
+          currentAmount: data?['amount'] ?? 0.0,
+          currentFreq: data?['freq'] ?? 'Monthly',
+          currentStart: data?['start'] ?? DateTime.now(),
         );
       },
     ),

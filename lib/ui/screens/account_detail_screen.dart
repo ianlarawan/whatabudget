@@ -9,6 +9,7 @@ import '../../domain/models/transaction_item.dart';
 import '../../domain/models/category.dart';
 import '../../domain/models/interest_tier.dart';
 import '../../utils/number_formatters.dart';
+import '../../utils/statement_engine.dart';
 
 class AccountDetailScreen extends ConsumerStatefulWidget {
   final int accountId;
@@ -392,14 +393,18 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
               ),
             ),
             const SliverToBoxAdapter(
-              child: TabBar(tabs: [Tab(text: 'Current'), Tab(text: 'Installments'), Tab(text: 'Paid')]),
+              child: TabBar(tabs: [
+                Tab(text: 'Statements'), 
+                Tab(text: 'Installments'), 
+                Tab(text: 'Statement History') // Updated Tab Name
+              ]),
             ),
           ],
           body: TabBarView(
             children: [
-              _buildBillingDashboard(acc, txs, cats),
+              _buildAutomatedStatementsList(acc, txs, cats, colorScheme),
               _buildInstallmentsDashboard(txs, cats),
-              CustomScrollView(slivers: [_buildTransactionSliverList(txs.where((t) => t.type == 'income').toList(), cats)]),
+              _buildStatementHistoryTab(acc, txs, cats, colorScheme), // Updated View Reference
             ],
           ),
         ),
@@ -407,118 +412,28 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     );
   }
 
-  Widget _buildBillingDashboard(Account acc, List<TransactionItem> txs, List<Category> cats) {
-    final now = DateTime.now();
-    final billDay = acc.billingDate ?? 1;
-    final dueDayOrOffset = acc.dueDateOffset ?? 0;
-    
-    DateTime currentBillEnd = DateTime(now.year, now.month, billDay);
-    DateTime previousBillEnd = DateTime(now.year, now.month - 1, billDay);
-    DateTime previousBillStart = DateTime(now.year, now.month - 2, billDay);
-    
-    DateTime currentDueDate;
-    DateTime previousDueDate;
+  Widget _buildAutomatedStatementsList(Account acc, List<TransactionItem> txs, List<Category> cats, ColorScheme colorScheme) {
+    final computedStatements = StatementEngine.generateStatements(account: acc, transactions: txs);
 
-    if (acc.type == 'Credit') {
-      currentDueDate = currentBillEnd.add(Duration(days: dueDayOrOffset));
-      previousDueDate = previousBillEnd.add(Duration(days: dueDayOrOffset));
-    } else {
-      int currentDueMonth = dueDayOrOffset <= billDay ? currentBillEnd.month + 1 : currentBillEnd.month;
-      currentDueDate = DateTime(currentBillEnd.year, currentDueMonth, dueDayOrOffset);
-      
-      int prevDueMonth = dueDayOrOffset <= billDay ? previousBillEnd.month + 1 : previousBillEnd.month;
-      previousDueDate = DateTime(previousBillEnd.year, prevDueMonth, dueDayOrOffset);
+    if (computedStatements.isEmpty) {
+      return const Center(child: Text('No structured bill logs computed.'));
     }
 
-    final currentTxs = txs.where((t) => t.date >= previousBillEnd.millisecondsSinceEpoch && t.type == 'expense').toList();
-    final previousTxs = txs.where((t) => t.date >= previousBillStart.millisecondsSinceEpoch && t.date < previousBillEnd.millisecondsSinceEpoch && t.type == 'expense').toList();
-
-    double currentSpend = currentTxs.fold(0, (s, t) => s + _calculateImpact(t));
-    double previousSpend = previousTxs.fold(0, (s, t) => s + _calculateImpact(t));
+    // Isolate only active statements for the primary view tab
+    final activeUnbilled = computedStatements[0];
+    final activePaymentDue = computedStatements[1];
 
     return ListView(
       padding: const EdgeInsets.all(8),
       children: [
-        InkWell(
-          onTap: () => context.push('/statement-detail', extra: {
-            'account': acc, 'type': 'Current', 'start': previousBillEnd, 'end': currentBillEnd,
-            'due': currentDueDate, 'amount': currentSpend, 'txs': currentTxs, 'cats': cats
-          }),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Current Statement', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                          Text('Billed On: ${DateFormat('MMM dd').format(currentBillEnd)}', style: const TextStyle(fontSize: 12)),
-                          Text('Due: ${DateFormat('MMM dd, yyyy').format(currentDueDate)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          Text('Total Spend: ₱${currentSpend.toCurrency()}', style: const TextStyle(fontSize: 16, color: Colors.red)),
-                        ],
-                      ),
-                      const Icon(Icons.chevron_right),
-                    ],
-                  ),
-                  if (acc.type == 'Credit') ...[
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: () => context.push('/transaction-form', extra: {'mode': 'pay_bill', 'accountId': acc.id}), 
-                      child: const Text('Pay Advance')
-                    ),
-                  ]
-                ],
-              ),
-            ),
-          ),
-        ),
-        InkWell(
-          onTap: () => context.push('/statement-detail', extra: {
-            'account': acc, 'type': 'Payment Due', 'start': previousBillStart, 'end': previousBillEnd,
-            'due': previousDueDate, 'amount': previousSpend, 'txs': previousTxs, 'cats': cats
-          }),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Payment Due', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                          Text('Billed On: ${DateFormat('MMM dd').format(previousBillEnd)}', style: const TextStyle(fontSize: 12)),
-                          Text('Due: ${DateFormat('MMM dd, yyyy').format(previousDueDate)}', style: const TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
-                          Text('Total Due: ₱${previousSpend.toCurrency()}', style: const TextStyle(fontSize: 16, color: Colors.red)),
-                        ],
-                      ),
-                      const Icon(Icons.chevron_right),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: () => context.push('/transaction-form', extra: {'mode': 'pay_bill', 'accountId': acc.id}), 
-                    child: const Text('Pay Bill')
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        _buildStatementCard(acc, activeUnbilled, cats, colorScheme),
+        _buildStatementCard(acc, activePaymentDue, cats, colorScheme, requirePayButton: true),
         const Divider(),
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
-          child: Text('Transactions', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          child: Text('All Account Logs', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         ),
-        ...txs.map((tx) {
+        ...txs.where((t) => t.type == 'expense').map((tx) {
           Category? cat;
           try { cat = cats.firstWhere((c) => c.id == tx.categoryId); } catch (_) {}
           final dateStr = DateFormat('MMM dd, hh:mm a').format(DateTime.fromMillisecondsSinceEpoch(tx.date));
@@ -537,11 +452,131 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
               ],
             ),
             subtitle: Text('${tx.type.toUpperCase()} • $dateStr', style: const TextStyle(fontSize: 10)),
-            trailing: Text('₱${_calculateImpact(tx).toCurrency()}', style: TextStyle(color: tx.type == 'income' ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
+            trailing: Text('₱${_calculateImpact(tx).toCurrency()}', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
             onTap: () => context.push('/transaction-form', extra: tx),
           );
         }),
       ],
+    );
+  }
+
+  Widget _buildStatementHistoryTab(Account acc, List<TransactionItem> txs, List<Category> cats, ColorScheme colorScheme) {
+    final computedStatements = StatementEngine.generateStatements(account: acc, transactions: txs);
+    
+    // Check if historical archives exist (skipping current unbilled and payment due items)
+    if (computedStatements.length <= 2) {
+      return const Center(
+        child: Text('Statement History\nNo historical statements archived.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+      );
+    }
+
+    final historicalArchive = computedStatements.skip(2).toList();
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: historicalArchive.length,
+      itemBuilder: (context, index) {
+        return _buildStatementCard(acc, historicalArchive[index], cats, colorScheme, isArchived: true);
+      },
+    );
+  }
+
+  Widget _buildStatementCard(Account acc, Statement st, List<Category> cats, ColorScheme colorScheme, {bool requirePayButton = false, bool isArchived = false}) {
+    final bool displayPaid = st.isPaid;
+    final bool isLightMode = Theme.of(context).brightness == Brightness.light;
+
+    // Define adaptive background and border tint colors dynamically
+    Color? cardBackground;
+    BorderSide? cardBorder;
+
+    if (displayPaid) {
+      cardBackground = isLightMode 
+          ? Colors.green.shade50.withOpacity(0.5) // Crisp, bright green tint for Light Mode
+          : Colors.green.withOpacity(0.06);       // Clean, subtle glow for Dark/AMOLED Modes
+      cardBorder = BorderSide(color: isLightMode ? Colors.green.shade300 : Colors.green.shade700, width: 1);
+    } else if (isArchived) {
+      cardBackground = colorScheme.surfaceContainerLow;
+    }
+
+    return InkWell(
+      onTap: () => context.push('/statement-detail', extra: {
+        'account': acc, 
+        'type': st.label, 
+        'start': st.billingDate.subtract(const Duration(days: 30)), 
+        'end': st.billingDate,
+        'due': st.dueDate, 
+        'amount': st.totalAmount, 
+        'txs': st.transactions, 
+        'cats': cats
+      }),
+      child: Card(
+        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        elevation: (isArchived || displayPaid) ? 0 : 1, // Flattens paid cards for a cleaner look
+        color: cardBackground,
+        shape: cardBorder != null 
+            ? RoundedRectangleBorder(side: cardBorder, borderRadius: BorderRadius.circular(12))
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(st.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          if (displayPaid) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isLightMode ? Colors.green.shade600 : Colors.green, 
+                                borderRadius: BorderRadius.circular(6)
+                              ),
+                              child: const Text(
+                                'PAID', 
+                                style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900)
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      Text('Statement Cut: ${DateFormat('MMM dd, yyyy').format(st.billingDate)}', style: const TextStyle(fontSize: 11)),
+                      Text('Payment Deadline: ${DateFormat('MMM dd, yyyy').format(st.dueDate)}', 
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: (requirePayButton && !displayPaid) ? Colors.red : null)),
+                      const SizedBox(height: 4),
+                      Text(
+                        displayPaid ? 'Remaining Balance: ₱0.00' : 'Statement Total: ₱${st.amountDue.toCurrency()}', 
+                        style: TextStyle(
+                          fontSize: 15, 
+                          color: displayPaid 
+                              ? (isLightMode ? Colors.green.shade700 : Colors.green) 
+                              : Colors.red, 
+                          fontWeight: FontWeight.w700
+                        )
+                      ),
+                    ],
+                  ),
+                  const Icon(Icons.chevron_right, size: 18),
+                ],
+              ),
+              if (requirePayButton && !displayPaid) ...[
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.payment, size: 16),
+                  onPressed: () => context.push('/transaction-form', extra: {'mode': 'pay_bill', 'accountId': acc.id}), 
+                  label: const Text('Pay Statement Balance', style: TextStyle(fontSize: 12))
+                ),
+              ]
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -657,6 +692,10 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
         enabled: enabled,
       ),
     );
+  }
+
+  Widget _buildFieldStatic(TextEditingController ctrl, String label, {bool isNum = false, required bool enabled, required ColorScheme colorScheme}) {
+    return _buildField(ctrl, label, isNum: isNum, enabled: enabled, colorScheme: colorScheme);
   }
 
   Widget _buildStaticField(String label, String value, ColorScheme colorScheme) {

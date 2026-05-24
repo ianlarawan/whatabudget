@@ -24,11 +24,16 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
       orElse: () => Category(name: '', icon: '', type: '')
     );
     
-    // 1. Exclude administrative categories
-    final excludedCategories = ['Balance Adjustment', 'Transfer Fee'];
-    if (excludedCategories.contains(cat.name)) return false;
+    // Unifies exclusion policies across the engine
+    final excludedCategories = [
+      'Balance Adjustment', 
+      'Transfer Fee',
+      'Credit/Loan Bill Payment'
+    ];
+    if (excludedCategories.contains(cat.name)) {
+      return false;
+    }
     
-    // 2. Exclude all variations of initial balance notes
     if (t.note != null) {
       final note = t.note!;
       if (note.contains('Initial Balance')) return false;
@@ -40,7 +45,9 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
   }
 
   double _calculateImpact(TransactionItem t) {
-    if (t.isInstallment && t.installmentTotal != null && t.installmentTotal! > 0) return t.amount / t.installmentTotal!;
+    if (t.isInstallment && t.installmentTotal != null && t.installmentTotal! > 0) {
+      return t.amount / t.installmentTotal!;
+    }
     return t.amount;
   }
 
@@ -122,10 +129,11 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
                   error: (e, _) => Center(child: Text('Error: $e')),
                   data: (txs) {
                     final categories = catsAsync.value ?? [];
-                    // APPLY REFINED FILTERING HERE
                     final filteredTxs = txs.where((t) => _isRealActivity(t, categories)).toList();
 
-                    if (_tabIndex == 0) return _buildCurrentView(filteredTxs, colorScheme);
+                    if (_tabIndex == 0) {
+                      return _buildCurrentView(filteredTxs, colorScheme);
+                    }
                     return _buildHistoryView(filteredTxs, colorScheme);
                   },
                 );
@@ -166,7 +174,6 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
             child: Column(
               children: [
                 const Text('Net Total', style: TextStyle(fontWeight: FontWeight.bold)),
-                // Displaying the filtered totals
                 Text('₱${net.toCurrency()}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 Text('${txs.length} real transactions', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
               ],
@@ -223,16 +230,18 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
 
   Widget _buildHistoryView(List<TransactionItem> txs, ColorScheme colorScheme) {
     int dataPoints = 6;
-    if (_historyRange == '1 month') dataPoints = 4;
-    else if (_historyRange == '1 year') dataPoints = 12;
+    if (_historyRange == '1 month') {
+      dataPoints = 4;
+    } else if (_historyRange == '1 year') {
+      dataPoints = 12;
+    }
 
     return Column(
       children: [
-        // Dropdown and Graph implementation remains the same but uses filtered txs
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: DropdownButtonFormField<String>(
-            value: _historyRange,
+            initialValue: _historyRange, // Fixed: Changed 'value' parameter to 'initialValue'
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.history),
               filled: true,
@@ -278,8 +287,8 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
               }
               
               final periodTxs = txs.where((t) => t.date >= start.millisecondsSinceEpoch && t.date < end.millisecondsSinceEpoch);
-              double pExp = periodTxs.where((t) => t.type == 'expense').fold(0, (s,t) => s + _calculateImpact(t));
-              double pInc = periodTxs.where((t) => t.type == 'income').fold(0, (s,t) => s + _calculateInnerImpact(t));
+              double pExp = periodTxs.where((t) => t.type == 'expense').fold(0, (s, t) => s + _calculateImpact(t));
+              double pInc = periodTxs.where((t) => t.type == 'income').fold(0, (s, t) => s + _calculateImpact(t)); // Fixed structural pointer loop name
               
               return Card(
                 elevation: 1,
@@ -313,9 +322,6 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
       ],
     );
   }
-
-  // Double check helper for fold operations
-  double _calculateInnerImpact(TransactionItem t) => _calculateImpact(t);
 }
 
 class DonutChartPainter extends CustomPainter {

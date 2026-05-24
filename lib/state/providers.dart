@@ -244,4 +244,35 @@ class TransactionNotifier extends AsyncNotifier<List<TransactionItem>> {
       await repository.updateAccount(updatedAccount);
     } catch (_) {} 
   }
+  Future<void> addInstallmentTransaction(TransactionItem baseTx) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final repository = ref.read(financeRepositoryProvider);
+      final int totalMonths = baseTx.installmentTotal ?? 1;
+      final DateTime purchaseDate = DateTime.fromMillisecondsSinceEpoch(baseTx.date);
+
+      // Generate separate transaction logs for each future billing segment
+      for (int i = 0; i < totalMonths; i++) {
+        final futureDate = DateTime(purchaseDate.year, purchaseDate.month + i, purchaseDate.day);
+        
+        final distributedTx = TransactionItem(
+          amount: baseTx.amount, // Retains total amount; your _calculateImpact method divides this safely
+          type: baseTx.type,
+          categoryId: baseTx.categoryId,
+          accountId: baseTx.accountId,
+          date: futureDate.millisecondsSinceEpoch,
+          note: baseTx.note,
+          isInstallment: true,
+          installmentTotal: totalMonths,
+          installmentCurrent: i,
+        );
+        
+        await repository.insertTransaction(distributedTx);
+        await _applyTransactionImpact(repository, distributedTx, isRevert: false);
+      }
+      
+      ref.invalidate(accountsProvider);
+      return repository.getTransactions();
+    });
+  }
 }

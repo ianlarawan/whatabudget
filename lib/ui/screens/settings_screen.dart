@@ -16,6 +16,7 @@ class SettingsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          // Section 1: Appearance
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text('Appearance', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary)),
@@ -38,14 +39,31 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const Divider(),
+
+          // Section 2: Preferences (Appropriate Home for Budgeting)
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Text('Data Management', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary)),
+            child: Text('Preferences', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.wallet), // Color parameter stripped; naturally uses theme grey/neutral
+            title: const Text('Configure Budget Targets'),
+            subtitle: const Text('Set or reset your daily, weekly, or monthly spending limits'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/edit-budget'),
           ),
           ListTile(
             leading: const Icon(Icons.category),
             title: const Text('Manage Categories'),
+            subtitle: const Text('Create or customize transaction labels'),
             onTap: () => context.push('/categories'),
+          ),
+          const Divider(),
+
+          // Section 3: Data Management (File Maintenance Only)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text('Data Management', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary)),
           ),
           ListTile(
             leading: const Icon(Icons.backup),

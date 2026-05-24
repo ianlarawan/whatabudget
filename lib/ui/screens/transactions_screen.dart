@@ -22,30 +22,30 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   Set<int> _selectedCategories = {};
 
-  // Helper: Filter for active financial activity only
-  // Helper: Filter for active financial activity only
+// Update your filter method or where transactions are prepared for display/sums:
   bool _isRealActivity(TransactionItem t, List<Category> categories) {
-    // Find the category for this transaction
-    final cat = categories.firstWhere(
-      (c) => c.id == t.categoryId, 
-      orElse: () => Category(name: '', icon: '', type: '')
-    );
-    
-    // 1. Exclude administrative categories
-    final excludedCategories = ['Balance Adjustment', 'Transfer Fee'];
-    if (excludedCategories.contains(cat.name)) return false;
-    
-    // 2. Exclude setup/initial balance notes
-    // Updated to include the new detailed notes for Credit/Loans
-    if (t.note != null) {
-      final note = t.note!;
-      if (note.contains('Initial Balance')) return false;
-      if (note.contains('Initial Balance (Previous Statement)')) return false;
-      if (note.contains('Initial Balance (Current Statement)')) return false;
-    }
-
-    return true;
+  final cat = categories.firstWhere(
+    (c) => c.id == t.categoryId, 
+    orElse: () => Category(name: '', icon: '', type: '')
+  );
+  
+  // Exclude non-spending administrative movements and debt clearings
+  final excludedCategories = [
+    'Balance Adjustment', 
+    'Transfer Fee', 
+    'Credit/Loan Bill Payment' // Added to fix 2x double-counting
+  ];
+  if (excludedCategories.contains(cat.name)) return false;
+  
+  if (t.note != null) {
+    final note = t.note!;
+    if (note.contains('Initial Balance')) return false;
+    if (note.contains('Initial Balance (Previous Statement)')) return false;
+    if (note.contains('Initial Balance (Current Statement)')) return false;
   }
+
+  return true;
+}
 
   @override
   void initState() {
