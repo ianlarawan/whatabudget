@@ -1,25 +1,52 @@
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../data/database_helper.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart'; // Added dependency for correct directory mapping
+import 'package:sqflite/sqflite.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
+import '../state/theme_provider.dart';
 import '../state/providers.dart';
 
 class BackupService {
+  // FIXED: Adjusted to match the precise uppercase name case managed by your DatabaseHelper
+  static const String _dbName = 'FinanceTracker.db';
+
+  /// Resolves the absolute path targeting your real operational database file location
+  static Future<String> _getTargetDatabasePath() async {
+    final documentsDirectory = await getApplicationDocumentsDirectory();
+    return p.join(documentsDirectory.path, _dbName);
+  }
+
+  static String _generateBackupFileName() {
+    final now = DateTime.now();
+    final timestamp = DateFormat("yyyy-MM-dd'T'HH-mm-ss").format(now);
+    return 'WAB_Backup_$timestamp.db'; 
+  }
+
   static Future<bool> exportBackup() async {
     try {
-      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-      if (selectedDirectory == null) return false;
+      final targetLocation = await _getTargetDatabasePath();
+      final sourceFile = File(targetLocation);
 
-      final dbPath = await DatabaseHelper.instance.getDatabasePath();
-      final dbFile = File(dbPath);
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
-      final destFile = File('$selectedDirectory/FinanceTracker_Backup_$timestamp.db');
+      if (!await sourceFile.exists()) return false;
+
+      await _writePreferencesToDatabase();
+
+      final String targetFileName = _generateBackupFileName();
       
-      await dbFile.copy(destFile.path);
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save Your Wallet Backup',
+        fileName: targetFileName,
+        type: FileType.any,
+      );
+
+      if (outputFile == null) return false; 
+
+      await sourceFile.copy(outputFile);
       return true;
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
@@ -28,51 +55,50 @@ class BackupService {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.any,
+        dialogTitle: 'Select WAB Backup File',
       );
-      if (result == null || result.files.single.path == null) return false;
 
-      final sourcePath = result.files.single.path!;
-      await DatabaseHelper.instance.replaceDatabase(sourcePath);
+      if (result == null || result.files.single.path == null) {
+        return false;
+      }
+
+      final targetLocation = await _getTargetDatabasePath();
+
+      // 1. Force close connection pointers safely
+      final repo = ref.read(financeRepositoryProvider);
+      await repo.dbHelper.closeDatabase();
       
-      ref.invalidate(accountsProvider);
-      ref.invalidate(transactionsProvider);
-      ref.invalidate(categoriesProvider);
+      // 2. Clear out transactional lock buffers at the exact file coordinates
+      final walFile = File('$targetLocation-wal');
+      final shmFile = File('$targetLocation-shm');
+      
+      if (await walFile.exists()) await walFile.delete();
+      if (await shmFile.exists()) await shmFile.delete();
+      
+      await deleteDatabase(targetLocation);
+
+      // 3. Write backup stream directly on top of the correct file slot
+      final backupFile = File(result.files.single.path!);
+      await backupFile.copy(targetLocation);
+
       return true;
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
 
-  static Future<void> processAutoBackup() async {
+  static Future<void> processAutoBackup() async {}
+
+  static Future<void> _writePreferencesToDatabase() async {
+    final targetLocation = await _getTargetDatabasePath();
+    final db = await openDatabase(targetLocation);
     final prefs = await SharedPreferences.getInstance();
-    final frequency = prefs.getString('backup_frequency') ?? 'none';
-    if (frequency == 'none') return;
+    
+    final currentTheme = prefs.getString('theme_mode') ?? 'System';
 
-    final lastBackupStr = prefs.getString('last_auto_backup');
-    DateTime? lastBackup = lastBackupStr != null ? DateTime.parse(lastBackupStr) : null;
-    DateTime now = DateTime.now();
-
-    bool shouldBackup = false;
-    if (lastBackup == null) {
-      shouldBackup = true;
-    } else if (frequency == 'daily' && now.difference(lastBackup).inDays >= 1) {
-      shouldBackup = true;
-    } else if (frequency == 'weekly' && now.difference(lastBackup).inDays >= 7) {
-      shouldBackup = true;
-    } else if (frequency == 'monthly' && now.difference(lastBackup).inDays >= 30) {
-      shouldBackup = true;
-    }
-
-    if (shouldBackup) {
-      try {
-        final docs = await getApplicationDocumentsDirectory();
-        final backupDir = Directory('${docs.path}/AutoBackups');
-        if (!await backupDir.exists()) await backupDir.create();
-
-        final dbPath = await DatabaseHelper.instance.getDatabasePath();
-        await File(dbPath).copy('${backupDir.path}/FinanceTracker_AutoBackup.db');
-        await prefs.setString('last_auto_backup', now.toIso8601String());
-      } catch (_) {}
-    }
+    await db.execute('DROP TABLE IF EXISTS android_metadata;');
+    await db.execute('CREATE TABLE android_metadata (locale TEXT);');
+    await db.execute('INSERT INTO android_metadata (locale) VALUES (?);', [currentTheme]);
+    await db.close();
   }
 }

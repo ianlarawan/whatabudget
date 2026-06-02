@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/backup_service.dart';
 import '../../state/theme_provider.dart';
+import '../../state/providers.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -16,7 +17,7 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final PageController _pageController = PageController();
   final TextEditingController _budgetCtrl = TextEditingController();
-  String _budgetFreq = 'Monthly';
+  String _budgetFreq = 'Monthly'; // Keep only one instance of this declaration
   bool _isRestoring = false;
   DateTime _budgetStartDate = DateTime.now();
 
@@ -27,22 +28,36 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     super.dispose();
   }
 
-  Future<void> _handleRestore() async {
+Future<void> _handleRestore() async {
     setState(() => _isRestoring = true);
     bool success = await BackupService.restoreBackup(ref);
     setState(() => _isRestoring = false);
 
-    if (mounted) {
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Restore successful! Welcome back.')),
-        );
-        context.go('/'); 
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Restore cancelled or failed.')),
-        );
-      }
+    if (success) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('🔄 Restore Successful'),
+          content: const Text(
+            'Your financial data data has been recovered successfully.\n\n'
+            'Please restart the application now to load your accounts and preferences.'
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                // Completely exits the application pool loop cleanly
+                SystemNavigator.pop(); 
+              },
+              child: const Text('Exit App'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Restore cancelled or failed.')),
+      );
     }
   }
 
@@ -243,24 +258,25 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   style: const TextStyle(fontSize: 18),
                 ),
                 const SizedBox(height: 24),
-                DropdownButtonFormField<String>(
-                  value: _budgetFreq,
-                  decoration: InputDecoration(
-                    labelText: 'Budget Frequency',
-                    prefixIcon: const Icon(Icons.calendar_month),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    filled: true,
-                    fillColor: colorScheme.surfaceContainerHighest,
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'Daily', child: Text('Daily')),
-                    DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
-                    DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
-                    DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
-                    DropdownMenuItem(value: 'Yearly', child: Text('Yearly')),
-                  ],
-                  onChanged: (val) => setState(() => _budgetFreq = val!),
-                ),
+                // Change this block:
+DropdownButtonFormField<String>(
+  initialValue: _budgetFreq, // Fixed: changed 'value' to 'initialValue'
+  decoration: InputDecoration(
+    labelText: 'Budget Frequency',
+    prefixIcon: const Icon(Icons.calendar_month),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    filled: true,
+    fillColor: colorScheme.surfaceContainerHighest,
+  ),
+  items: const [
+    DropdownMenuItem(value: 'Daily', child: Text('Daily')),
+    DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
+    DropdownMenuItem(value: 'Bi-Weekly', child: Text('Bi-Weekly')),
+    DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+    DropdownMenuItem(value: 'Yearly', child: Text('Yearly')),
+  ],
+  onChanged: (val) => setState(() => _budgetFreq = val!),
+),
                 const SizedBox(height: 24),
                 ListTile(
                   title: const Text('Budget Start Date'),

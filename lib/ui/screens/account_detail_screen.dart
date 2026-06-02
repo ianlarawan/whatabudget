@@ -694,10 +694,6 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     );
   }
 
-  Widget _buildFieldStatic(TextEditingController ctrl, String label, {bool isNum = false, required bool enabled, required ColorScheme colorScheme}) {
-    return _buildField(ctrl, label, isNum: isNum, enabled: enabled, colorScheme: colorScheme);
-  }
-
   Widget _buildStaticField(String label, String value, ColorScheme colorScheme) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4.0),

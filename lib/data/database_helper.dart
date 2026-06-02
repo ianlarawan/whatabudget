@@ -48,6 +48,14 @@ class DatabaseHelper {
     _database = await _initDatabase();
   }
   
+// Inside your DatabaseHelper class definition, verify or add this clean close routine:
+  Future<void> closeDatabase() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null; // Important: Clear the instance handle to force an open-from-disk on re-fetch
+    }
+  }
+
   Future<String> getDatabasePath() async {
     final documentsDirectory = await getApplicationDocumentsDirectory();
     return join(documentsDirectory.path, _databaseName);

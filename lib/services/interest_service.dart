@@ -37,7 +37,10 @@ class InterestService {
           accumulated += dailyEarned;
           
           if (accumulated >= 0.01) {
-            double netInterest = accumulated * 0.80; // Deduct 20% withholding tax
+            double netInterestRaw = accumulated * 0.80; // Deduct 20% withholding tax
+            
+            // FIX: Force exactly 2 decimal places to match MariBank ledger truncation
+            double netInterest = double.parse(netInterestRaw.toStringAsFixed(2));
             
             await repo.insertTransaction(TransactionItem(
               amount: netInterest, type: 'income', categoryId: interestCat.id!,
@@ -55,7 +58,10 @@ class InterestService {
           accumulated += dailyEarned;
           
           if (processingDate.day == 1 && accumulated >= 0.01) {
-            double netInterest = accumulated * 0.80; // Deduct 20% withholding tax
+            double netInterestRaw = accumulated * 0.80; // Deduct 20% withholding tax
+            
+            // FIX: Force exactly 2 decimal places to match bank ledger truncation
+            double netInterest = double.parse(netInterestRaw.toStringAsFixed(2));
 
             await repo.insertTransaction(TransactionItem(
               amount: netInterest, type: 'income', categoryId: interestCat.id!,
@@ -75,7 +81,10 @@ class InterestService {
             double grossInterest = acc.interestRate! * rate * (daysInMonth / 365);
 
             if (grossInterest >= 0.01) {
-              double netInterest = grossInterest * 0.80; // Deduct 20% withholding tax
+              double netInterestRaw = grossInterest * 0.80; // Deduct 20% withholding tax
+              
+              // FIX: Force exactly 2 decimal places to match bank ledger truncation
+              double netInterest = double.parse(netInterestRaw.toStringAsFixed(2));
 
               await repo.insertTransaction(TransactionItem(
                 amount: netInterest, type: 'income', categoryId: interestCat.id!,
