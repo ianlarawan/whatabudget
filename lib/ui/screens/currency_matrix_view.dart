@@ -79,7 +79,7 @@ class _CurrencyMatrixViewState extends State<CurrencyMatrixView> {
   Future<void> _fetchLiveRates() async {
     setState(() => _isLoading = true);
     try {
-      final url = Uri.parse('https://api.frankfurter.dev/v1/latest?base=USD');
+      final url = Uri.parse('https://api.frankfurter.app/v1/latest?base=USD');
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
