@@ -79,35 +79,54 @@ class _CurrencyMatrixViewState extends State<CurrencyMatrixView> {
   Future<void> _fetchLiveRates() async {
     setState(() => _isLoading = true);
     try {
-      final url = Uri.parse('https://api.frankfurter.app/v1/latest?base=USD');
+      // 1. Target the correct v2 path endpoint structure
+      final url = Uri.parse('https://api.frankfurter.dev/v2/rates?base=USD');
       final response = await http.get(url);
+      
+      debugPrint('Frankfurter API Status: ${response.statusCode}');
+      debugPrint('Frankfurter API Body: ${response.body}');
+
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final rates = data['rates'] as Map<String, dynamic>;
+        // 2. Parse the root as a List rather than a Map to support v2 formats
+        final List<dynamic> dataList = json.decode(response.body);
         
-        final String rawDateFromServer = data['date'] ?? '';
-        String parsedFormattedDate = rawDateFromServer;
-        try {
-          if (rawDateFromServer.isNotEmpty) {
-            final DateTime parsedDate = DateTime.parse(rawDateFromServer);
-            parsedFormattedDate = DateFormat('d MMM yyyy').format(parsedDate).toUpperCase();
+        String parsedFormattedDate = 'UNKNOWN';
+        _usdExchangeRates['USD'] = 1.0;
+
+        if (dataList.isNotEmpty) {
+          // Extract the system date string safely from the first entry package
+          final String rawDateFromServer = dataList.first['date'] ?? '';
+          try {
+            if (rawDateFromServer.isNotEmpty) {
+              final DateTime parsedDate = DateTime.parse(rawDateFromServer);
+              parsedFormattedDate = DateFormat('d MMM yyyy').format(parsedDate).toUpperCase();
+            }
+          } catch (_) {
+            parsedFormattedDate = DateFormat('d MMM yyyy').format(DateTime.now()).toUpperCase();
           }
-        } catch (_) {
-          parsedFormattedDate = DateFormat('d MMM yyyy').format(DateTime.now()).toUpperCase();
+
+          // 3. Loop through the array objects to map 'quote' and 'rate' keys
+          for (var entry in dataList) {
+            final String quoteKey = entry['quote'] ?? '';
+            final double? rateValue = (entry['rate'] as num?)?.toDouble();
+
+            if (quoteKey.isNotEmpty && rateValue != null) {
+              if (_availableCurrencies.contains(quoteKey)) {
+                _usdExchangeRates[quoteKey] = rateValue;
+              }
+            }
+          }
         }
 
         setState(() {
           _lastRefreshedDateStr = parsedFormattedDate;
-          _usdExchangeRates['USD'] = 1.0;
-          for (var key in rates.keys) {
-            if (_availableCurrencies.contains(key)) {
-              _usdExchangeRates[key] = rates[key].toDouble();
-            }
-          }
           _recalculateValuesFromActiveRow();
         });
       }
-    } catch (_) {
+    } catch (e, stackTrace) {
+      debugPrint('CRITICAL NETWORK ERROR: $e');
+      debugPrint('STACK TRACE: $stackTrace');
+
       if (_lastRefreshedDateStr == 'Loading...') {
         setState(() {
           _lastRefreshedDateStr = DateFormat('d MMM yyyy').format(DateTime.now()).toUpperCase();
@@ -289,7 +308,7 @@ class _CurrencyMatrixViewState extends State<CurrencyMatrixView> {
   Widget _buildButton(String label, {bool isOperator = false, bool isAccent = false, VoidCallback? onTap}) {
     final theme = Theme.of(context);
     Color bg = isOperator ? theme.colorScheme.surfaceContainerHighest : theme.colorScheme.surfaceContainer;
-    Color fg = isOperator ? theme.colorScheme.primary : theme.colorScheme.onSurface;
+    Color fg = isOperator ? theme.colorScheme.primary : theme.colorScheme.onSurface; // FIX: Changed from theme.colorSurface to theme.colorScheme.onSurface
 
     if (isAccent) {
       bg = theme.colorScheme.primary;
