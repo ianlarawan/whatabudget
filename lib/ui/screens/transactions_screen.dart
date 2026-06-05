@@ -20,32 +20,30 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   bool _isSearching = false;
   final TextEditingController _searchCtrl = TextEditingController();
-  Set<int> _selectedCategories = {};
+  final Set<int> _selectedCategories = {};
 
-// Update your filter method or where transactions are prepared for display/sums:
   bool _isRealActivity(TransactionItem t, List<Category> categories) {
-  final cat = categories.firstWhere(
-    (c) => c.id == t.categoryId, 
-    orElse: () => Category(name: '', icon: '', type: '')
-  );
-  
-  // Exclude non-spending administrative movements and debt clearings
-  final excludedCategories = [
-    'Balance Adjustment', 
-    'Transfer Fee', 
-    'Credit/Loan Bill Payment' // Added to fix 2x double-counting
-  ];
-  if (excludedCategories.contains(cat.name)) return false;
-  
-  if (t.note != null) {
-    final note = t.note!;
-    if (note.contains('Initial Balance')) return false;
-    if (note.contains('Initial Balance (Previous Statement)')) return false;
-    if (note.contains('Initial Balance (Current Statement)')) return false;
-  }
+    final cat = categories.firstWhere(
+      (c) => c.id == t.categoryId, 
+      orElse: () => Category(name: '', icon: '', type: '')
+    );
+    
+    final excludedCategories = [
+      'Balance Adjustment', 
+      'Transfer Fee', 
+      'Credit/Loan Bill Payment'
+    ];
+    if (excludedCategories.contains(cat.name)) return false;
+    
+    if (t.note != null) {
+      final note = t.note!;
+      if (note.contains('Initial Balance')) return false;
+      if (note.contains('Initial Balance (Previous Statement)')) return false;
+      if (note.contains('Initial Balance (Current Statement)')) return false;
+    }
 
-  return true;
-}
+    return true;
+  }
 
   @override
   void initState() {
@@ -127,8 +125,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                           value: isSelected,
                           onChanged: (val) {
                             setModalState(() {
-                              if (val == true) _selectedCategories.add(cat.id!);
-                              else _selectedCategories.remove(cat.id!);
+                              if (val == true) {
+                                _selectedCategories.add(cat.id!);
+                              } else {
+                                _selectedCategories.remove(cat.id!);
+                              }
                             });
                             setState(() {});
                           },
@@ -152,43 +153,67 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: _isSearching 
-            ? TextField(
-                controller: _searchCtrl,
-                autofocus: true,
-                decoration: const InputDecoration(hintText: 'Search transactions...', border: InputBorder.none),
-              )
-            : const Text('Transactions'),
-        actions: [
-          IconButton(
-            icon: Icon(_isSearching ? Icons.close : Icons.search), 
-            onPressed: () {
-              setState(() {
-                _isSearching = !_isSearching;
-                if (!_isSearching) _searchCtrl.clear();
-              });
-            }
-          ),
-          IconButton(
-            icon: Icon(Icons.filter_list, color: _selectedCategories.isNotEmpty ? colorScheme.primary : null), 
-            onPressed: () {
-              if (catsAsync.value != null && txsAsync.value != null) {
-                _openFilterDialog(catsAsync.value!, txsAsync.value!);
-              }
-            }
-          ),
-        ],
-      ),
       body: txsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (allTxs) {
-          if (_months.isEmpty || allTxs.isEmpty && _months.length == 1) _generateMonths(allTxs);
+          if (_months.isEmpty || (allTxs.isEmpty && _months.length == 1)) {
+            _generateMonths(allTxs);
+          }
           final categories = catsAsync.value ?? [];
 
           return Column(
             children: [
+              // Inline Toolbar Row providing search configuration states and action items directly inside layout body
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _isSearching
+                          ? TextField(
+                              controller: _searchCtrl,
+                              autofocus: true,
+                              decoration: const InputDecoration(
+                                hintText: 'Search transactions...',
+                                border: InputBorder.none,
+                                isDense: true,
+                              ),
+                              style: const TextStyle(fontSize: 16),
+                            )
+                          : Text(
+                              'Ledger History',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                              ),
+                            ),
+                    ),
+                    IconButton(
+                      icon: Icon(_isSearching ? Icons.close : Icons.search),
+                      onPressed: () {
+                        setState(() {
+                          _isSearching = !_isSearching;
+                          if (!_isSearching) _searchCtrl.clear();
+                        });
+                      },
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.filter_list,
+                        color: _selectedCategories.isNotEmpty ? colorScheme.primary : null,
+                      ),
+                      onPressed: () {
+                        if (catsAsync.value != null && txsAsync.value != null) {
+                          _openFilterDialog(catsAsync.value!, txsAsync.value!);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
               SizedBox(
                 height: 50,
                 child: ListView.builder(
@@ -198,18 +223,27 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     bool isSelected = i == _currentIndex;
                     return GestureDetector(
                       onTap: () {
-                        _pageController.animateToPage(i, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                        _pageController.animateToPage(
+                          i,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                         decoration: BoxDecoration(
-                          border: Border(bottom: BorderSide(color: isSelected ? colorScheme.primary : Colors.transparent, width: 3)),
+                          border: Border(
+                            bottom: BorderSide(
+                              color: isSelected ? colorScheme.primary : Colors.transparent,
+                              width: 3,
+                            ),
+                          ),
                         ),
                         child: Text(
                           DateFormat('MMMM yyyy').format(_months[i]),
                           style: TextStyle(
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, 
-                            color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ),
@@ -251,7 +285,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
       if (query.isNotEmpty) {
         Category? cat;
-        try { cat = cats.firstWhere((c) => c.id == t.categoryId); } catch (_) {}
+        try {
+          cat = cats.firstWhere((c) => c.id == t.categoryId);
+        } catch (_) {}
         String noteMatches = t.note?.toLowerCase() ?? '';
         String catMatches = cat?.name.toLowerCase() ?? '';
         if (!noteMatches.contains(query) && !catMatches.contains(query)) return false;
@@ -261,7 +297,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
     monthTxs.sort((a, b) => b.date.compareTo(a.date));
 
-    // Refined Stats: Filtered for "Real" activity to prevent setup bloat
     double expense = monthTxs
         .where((t) => t.type == 'expense' && _isRealActivity(t, cats))
         .fold(0.0, (s, t) => s + _getDisplayAmount(t));
@@ -315,7 +350,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                         ),
                         ...dayTxs.map((tx) {
                           Category? cat;
-                          try { cat = cats.firstWhere((c) => c.id == tx.categoryId); } catch (_) {}
+                          try {
+                            cat = cats.firstWhere((c) => c.id == tx.categoryId);
+                          } catch (_) {}
 
                           String titleText = '${cat?.icon ?? ''} ${cat?.name ?? 'Unknown'}';
                           if (tx.isInstallment && tx.installmentTotal != null && tx.installmentTotal! > 0) {

@@ -56,10 +56,10 @@ class _AllSpendingScreenState extends ConsumerState<AllSpendingScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('All Spending'),
-        elevation: 0,
-      ),
+      //appBar: AppBar(
+        //title: const Text('All Spending'),
+        //elevation: 0,
+      //),
       body: Column(
         children: [
           Padding(

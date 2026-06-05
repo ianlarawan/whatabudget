@@ -22,8 +22,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
   String? _budgetFreq;
   DateTime? _budgetStart;
 
-  // Helper: Filter for active spending only
-bool _isBudgetTransaction(TransactionItem t, List<Category> categories) {
+  bool _isBudgetTransaction(TransactionItem t, List<Category> categories) {
     if (t.type != 'expense') return false;
     
     final cat = categories.firstWhere(
@@ -31,7 +30,6 @@ bool _isBudgetTransaction(TransactionItem t, List<Category> categories) {
       orElse: () => Category(name: '', icon: '', type: '')
     );
     
-    // Added 'Credit/Loan Bill Payment' to prevent double deduction
     final excludedCategories = [
       'Balance Adjustment', 
       'Transfer Fee', 
@@ -44,46 +42,42 @@ bool _isBudgetTransaction(TransactionItem t, List<Category> categories) {
     return true;
   }
 
-  // Helper: Calculate Due Date Countdown based on nearest deadline
   String? _getDueDateCountdown(Account acc) {
-  if (!['Credit', 'Loans'].contains(acc.type) || acc.billingDate == null) return null;
+    if (!['Credit', 'Loans'].contains(acc.type) || acc.billingDate == null) return null;
 
-  final now = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-  DateTime targetDue;
+    final now = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    DateTime targetDue;
 
-  if (acc.type == 'Credit') {
-    // Credit Logic: Billing Date + Offset days
-    final int billDay = acc.billingDate!;
-    final int offset = acc.dueDateOffset ?? 20;
-    
-    DateTime pDue = DateTime(now.year, now.month - 1, billDay).add(Duration(days: offset));
-    DateTime cDue = DateTime(now.year, now.month, billDay).add(Duration(days: offset));
-    DateTime nDue = DateTime(now.year, now.month + 1, billDay).add(Duration(days: offset));
+    if (acc.type == 'Credit') {
+      final int billDay = acc.billingDate!;
+      final int offset = acc.dueDateOffset ?? 20;
+      
+      DateTime pDue = DateTime(now.year, now.month - 1, billDay).add(Duration(days: offset));
+      DateTime cDue = DateTime(now.year, now.month, billDay).add(Duration(days: offset));
+      DateTime nDue = DateTime(now.year, now.month + 1, billDay).add(Duration(days: offset));
 
-    if (!pDue.isBefore(now)) targetDue = pDue;
-    else if (!cDue.isBefore(now)) targetDue = cDue;
-    else targetDue = nDue;
-  } else {
-    // Loan Logic: dueDateOffset is the actual day of the month (e.g., 05)
-    final int dueDay = acc.dueDateOffset ?? acc.billingDate!;
-    
-    DateTime pDue = DateTime(now.year, now.month - 1, dueDay);
-    DateTime cDue = DateTime(now.year, now.month, dueDay);
-    DateTime nDue = DateTime(now.year, now.month + 1, dueDay);
+      if (!pDue.isBefore(now)) targetDue = pDue;
+      else if (!cDue.isBefore(now)) targetDue = cDue;
+      else targetDue = nDue;
+    } else {
+      final int dueDay = acc.dueDateOffset ?? acc.billingDate!;
+      
+      DateTime pDue = DateTime(now.year, now.month - 1, dueDay);
+      DateTime cDue = DateTime(now.year, now.month, dueDay);
+      DateTime nDue = DateTime(now.year, now.month + 1, dueDay);
 
-    // If Today is May 4 and cDue is May 5, it correctly picks May 5
-    if (!pDue.isBefore(now)) targetDue = pDue;
-    else if (!cDue.isBefore(now)) targetDue = cDue;
-    else targetDue = nDue;
+      if (!pDue.isBefore(now)) targetDue = pDue;
+      else if (!cDue.isBefore(now)) targetDue = cDue;
+      else targetDue = nDue;
+    }
+
+    final daysLeft = targetDue.difference(now).inDays;
+
+    if (daysLeft == 0) return 'due today';
+    if (daysLeft == 1) return 'due tomorrow';
+    if (daysLeft < 0) return 'overdue';
+    return 'due in $daysLeft days';
   }
-
-  final daysLeft = targetDue.difference(now).inDays;
-
-  if (daysLeft == 0) return 'due today';
-  if (daysLeft == 1) return 'due tomorrow';
-  if (daysLeft < 0) return 'overdue';
-  return 'due in $daysLeft days';
-}
 
   @override
   void initState() {
@@ -160,13 +154,6 @@ bool _isBudgetTransaction(TransactionItem t, List<Category> categories) {
     final categories = categoriesAsync.value ?? [];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboard'),
-        actions: [
-          IconButton(icon: const Icon(Icons.settings), onPressed: () => context.push('/settings')),
-          IconButton(icon: const Icon(Icons.account_balance_wallet), onPressed: () => context.push('/add-account')),
-        ],
-      ),
       body: RefreshIndicator(
         onRefresh: _handleRefresh,
         child: ListView(
@@ -319,12 +306,12 @@ bool _isBudgetTransaction(TransactionItem t, List<Category> categories) {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-          onPressed: () async {
-            await context.push('/transaction-form');
-            if (mounted) _handleRefresh(); 
-          },
-          child: const Icon(Icons.add),
-        ),
+        onPressed: () async {
+          await context.push('/transaction-form');
+          if (mounted) _handleRefresh(); 
+        },
+        child: const Icon(Icons.add),
+      ),
     );
   }
 
@@ -409,14 +396,13 @@ bool _isBudgetTransaction(TransactionItem t, List<Category> categories) {
           const SizedBox(height: 8),
           InkWell(
             borderRadius: BorderRadius.circular(12),
-            // Inside dashboard_screen.dart -> _buildBudgetSection -> InkWell -> onTap:
             onTap: () async {
               await context.push('/budget-details', extra: {
                 'amount': _budgetAmount,
                 'freq': _budgetFreq,
                 'start': _budgetStart,
                 'spent': actualSpent,
-                'categories': categories, // ADD THIS LINE HERE
+                'categories': categories,
                 'transactions': allTxs.where((t) => 
                   t.date >= pStart.millisecondsSinceEpoch && 
                   t.date < pEnd.millisecondsSinceEpoch && 

@@ -12,5 +12,7 @@ An on-device personal finance management application built with Flutter. Designe
 * **Reactive State Management:** Riverpod-driven architecture for immediate UI synchronization.
 * **Data Portability:** Integrated local backup and restore mechanisms to guarantee data retention.
 
-## AI Collaboration Notice
-The architecture, debugging sequences, and code generation for this repository were developed with the assistance of artificial intelligence language models. Logic structures and native asset configurations were synthesized through iterative prompt engineering.
+## Vibe Code Notice
+This entire project was vibe coded with AI assistance—shaping the architecture, fixing bugs, and writing code through iterative conversations.
+
+While the logic and native asset configurations were synthesized through prompts, the engineering relies on continuous testing and refinement to keep things production-ready.
