@@ -46,60 +46,57 @@ class AccountNotifier extends AsyncNotifier<List<Account>> {
   FutureOr<List<Account>> build() async => ref.read(financeRepositoryProvider).getAccounts();
 
   Future<void> addAccount(Account account, {double? prevBalance, double? currBalance}) async {
-  state = const AsyncValue.loading();
-  state = await AsyncValue.guard(() async {
-    final repository = ref.read(financeRepositoryProvider);
-    await repository.insertAccount(account);
-    
-    final accounts = await repository.getAccounts();
-    final newAcc = accounts.last;
-    final cats = await repository.getCategories();
-    final adjCat = cats.firstWhere((c) => c.name == 'Balance Adjustment', orElse: () => cats.first);
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final repository = ref.read(financeRepositoryProvider);
+      await repository.insertAccount(account);
+      
+      final accounts = await repository.getAccounts();
+      final newAcc = accounts.last;
+      final cats = await repository.getCategories();
+      final adjCat = cats.firstWhere((c) => c.name == 'Balance Adjustment', orElse: () => cats.first);
 
-    if (['Credit', 'Loans'].contains(newAcc.type)) {
-      final now = DateTime.now();
-      final int billDay = newAcc.billingDate ?? 1;
+      if (['Credit', 'Loans'].contains(newAcc.type)) {
+        final now = DateTime.now();
+        final int billDay = newAcc.billingDate ?? 1;
 
-      if (prevBalance != null && prevBalance > 0) {
-        // Fix: Date this 1 day BEFORE the previous billing date 
-        // to ensure it is deep within the "Previous" period.
-        final prevBillingDate = DateTime(now.year, now.month - 1, billDay);
-        final historicalDate = prevBillingDate.subtract(const Duration(days: 1));
+        if (prevBalance != null && prevBalance > 0) {
+          final prevBillingDate = DateTime(now.year, now.month - 1, billDay);
+          final historicalDate = prevBillingDate.subtract(const Duration(days: 1));
 
-        await repository.insertTransaction(TransactionItem(
-          amount: prevBalance,
-          type: 'expense',
-          categoryId: adjCat.id!,
-          accountId: newAcc.id!,
-          date: historicalDate.millisecondsSinceEpoch,
-          note: 'Initial Balance (Previous Statement)'
-        ));
+          await repository.insertTransaction(TransactionItem(
+            amount: prevBalance,
+            type: 'expense',
+            categoryId: adjCat.id!,
+            accountId: newAcc.id!,
+            date: historicalDate.millisecondsSinceEpoch,
+            note: 'Initial Balance (Previous Statement)'
+          ));
+        }
+
+        if (currBalance != null && currBalance > 0) {
+          await repository.insertTransaction(TransactionItem(
+            amount: currBalance,
+            type: 'expense',
+            categoryId: adjCat.id!,
+            accountId: newAcc.id!,
+            date: now.millisecondsSinceEpoch,
+            note: 'Initial Balance (Current Statement)'
+          ));
+        }
+      } else {
+        if (newAcc.balance > 0) {
+          final adjCat = cats.firstWhere((c) => c.name == 'Balance Adjustment' && c.type == 'income', orElse: () => cats.first);
+          await repository.insertTransaction(TransactionItem(
+            amount: newAcc.balance, type: 'income', categoryId: adjCat.id!, accountId: newAcc.id!, 
+            date: DateTime.now().millisecondsSinceEpoch, note: 'Initial Balance'
+          ));
+        }
       }
-
-      if (currBalance != null && currBalance > 0) {
-        await repository.insertTransaction(TransactionItem(
-          amount: currBalance,
-          type: 'expense',
-          categoryId: adjCat.id!,
-          accountId: newAcc.id!,
-          date: now.millisecondsSinceEpoch,
-          note: 'Initial Balance (Current Statement)'
-        ));
-      }
-    } else {
-      // Logic for standard Savings/Wallet...
-      if (newAcc.balance > 0) {
-        final adjCat = cats.firstWhere((c) => c.name == 'Balance Adjustment' && c.type == 'income', orElse: () => cats.first);
-        await repository.insertTransaction(TransactionItem(
-          amount: newAcc.balance, type: 'income', categoryId: adjCat.id!, accountId: newAcc.id!, 
-          date: DateTime.now().millisecondsSinceEpoch, note: 'Initial Balance'
-        ));
-      }
-    }
-    ref.invalidate(transactionsProvider);
-    return repository.getAccounts();
-  });
-}
+      ref.invalidate(transactionsProvider);
+      return repository.getAccounts();
+    });
+  }
 
   Future<void> updateAccount(Account updatedAccount, {double? oldBalance}) async {
     state = const AsyncValue.loading();
@@ -113,7 +110,14 @@ class AccountNotifier extends AsyncNotifier<List<Account>> {
         final cats = await repository.getCategories();
         final adjCat = cats.firstWhere((c) => c.name == 'Balance Adjustment' && c.type == txType, orElse: () => cats.first);
 
-        await repository.insertTransaction(TransactionItem(amount: delta.abs(), type: txType, categoryId: adjCat.id!, accountId: updatedAccount.id!, date: DateTime.now().millisecondsSinceEpoch, note: 'Balance Adjustment'));
+        await repository.insertTransaction(TransactionItem(
+          amount: delta.abs(), 
+          type: txType, 
+          categoryId: adjCat.id!, 
+          accountId: updatedAccount.id!, 
+          date: DateTime.now().millisecondsSinceEpoch, 
+          note: 'Balance Adjustment'
+        ));
         ref.invalidate(transactionsProvider);
       }
       await repository.updateAccount(updatedAccount);
@@ -144,8 +148,35 @@ class TransactionNotifier extends AsyncNotifier<List<TransactionItem>> {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final repository = ref.read(financeRepositoryProvider);
-      await repository.insertTransaction(transaction);
-      await _applyTransactionImpact(repository, transaction, isRevert: false);
+      
+      // Automatically array-ify incoming installments if added manually
+      if (transaction.isInstallment && transaction.installmentTotal != null && transaction.installmentTotal! > 1) {
+        final int totalMonths = transaction.installmentTotal!;
+        final DateTime purchaseDate = DateTime.fromMillisecondsSinceEpoch(transaction.date);
+
+        for (int i = 0; i < totalMonths; i++) {
+          final futureDate = DateTime(purchaseDate.year, purchaseDate.month + i, purchaseDate.day);
+          
+          final distributedTx = TransactionItem(
+            amount: transaction.amount, 
+            type: transaction.type,
+            categoryId: transaction.categoryId,
+            accountId: transaction.accountId,
+            date: futureDate.millisecondsSinceEpoch,
+            note: transaction.note,
+            isInstallment: true,
+            installmentTotal: totalMonths,
+            installmentCurrent: i,
+          );
+          
+          await repository.insertTransaction(distributedTx);
+          await _applyTransactionImpact(repository, distributedTx, isRevert: false);
+        }
+      } else {
+        await repository.insertTransaction(transaction);
+        await _applyTransactionImpact(repository, transaction, isRevert: false);
+      }
+      
       ref.invalidate(accountsProvider);
       return repository.getTransactions();
     });
@@ -213,6 +244,60 @@ class TransactionNotifier extends AsyncNotifier<List<TransactionItem>> {
     });
   }
 
+  Future<void> updateInstallmentPlan({
+    required TransactionItem baseTx,
+    required List<double> exactAmounts,
+  }) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final repository = ref.read(financeRepositoryProvider);
+      final currentTxs = await repository.getTransactions();
+      
+      final relatedTxs = currentTxs.where((t) => 
+        t.accountId == baseTx.accountId &&
+        t.isInstallment == true &&
+        t.note == baseTx.note && 
+        t.installmentTotal == baseTx.installmentTotal
+      ).toList();
+
+      for (var tx in relatedTxs) {
+        await _applyTransactionImpact(repository, tx, isRevert: true);
+        await repository.deleteTransaction(tx.id!);
+      }
+
+      final firstLeg = relatedTxs.isNotEmpty 
+          ? relatedTxs.reduce((a, b) => (a.installmentCurrent ?? 0) < (b.installmentCurrent ?? 0) ? a : b) 
+          : baseTx;
+      final DateTime originalDate = DateTime.fromMillisecondsSinceEpoch(firstLeg.date);
+      final int newTenure = exactAmounts.length;
+
+      for (int i = 0; i < newTenure; i++) {
+        final futureDate = DateTime(originalDate.year, originalDate.month + i, originalDate.day);
+        
+        // Scale the exact manual amount up by the tenure length.
+        // When the legacy impact engine divides this by the tenure, it yields the exact manual input.
+        final scaledAmount = exactAmounts[i] * newTenure;
+
+        final newTx = TransactionItem(
+          amount: scaledAmount,
+          type: baseTx.type,
+          categoryId: baseTx.categoryId,
+          accountId: baseTx.accountId,
+          date: futureDate.millisecondsSinceEpoch,
+          note: baseTx.note,
+          isInstallment: true,
+          installmentTotal: newTenure,
+          installmentCurrent: i,
+        );
+        await repository.insertTransaction(newTx);
+        await _applyTransactionImpact(repository, newTx, isRevert: false);
+      }
+
+      ref.invalidate(accountsProvider);
+      return repository.getTransactions();
+    });
+  }
+
   Future<void> _applyTransactionImpact(FinanceRepository repository, TransactionItem tx, {required bool isRevert}) async {
     final accounts = await repository.getAccounts();
     try {
@@ -251,12 +336,11 @@ class TransactionNotifier extends AsyncNotifier<List<TransactionItem>> {
       final int totalMonths = baseTx.installmentTotal ?? 1;
       final DateTime purchaseDate = DateTime.fromMillisecondsSinceEpoch(baseTx.date);
 
-      // Generate separate transaction logs for each future billing segment
       for (int i = 0; i < totalMonths; i++) {
         final futureDate = DateTime(purchaseDate.year, purchaseDate.month + i, purchaseDate.day);
         
         final distributedTx = TransactionItem(
-          amount: baseTx.amount, // Retains total amount; your _calculateImpact method divides this safely
+          amount: baseTx.amount, 
           type: baseTx.type,
           categoryId: baseTx.categoryId,
           accountId: baseTx.accountId,

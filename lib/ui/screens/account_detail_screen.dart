@@ -114,6 +114,108 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     setState(() => _isEditing = false);
   }
 
+  void _showEditInstallmentDialog(List<TransactionItem> group) {
+    // Passes the exact pre-grouped logic array to bypass filtering failures
+    group.sort((a, b) => (a.installmentCurrent ?? 0).compareTo(b.installmentCurrent ?? 0));
+    final baseTx = group.first;
+
+    List<TextEditingController> controllers = group.map((t) {
+      double exactAmount = t.amount / (t.installmentTotal ?? 1);
+      return TextEditingController(text: exactAmount.toStringAsFixed(2));
+    }).toList();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Edit Pending Installments'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Remaining months', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline),
+                            onPressed: controllers.length > 1 ? () {
+                              setState(() {
+                                controllers.last.dispose();
+                                controllers.removeLast();
+                              });
+                            } : null,
+                          ),
+                          Text('${controllers.length}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline),
+                            onPressed: () {
+                              setState(() {
+                                controllers.add(TextEditingController(text: '0.00'));
+                              });
+                            },
+                          ),
+                        ],
+                      )
+                    ],
+                  ),
+                  const Divider(),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: controllers.length,
+                      itemBuilder: (context, index) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6.0),
+                          child: Row(
+                            children: [
+                              SizedBox(width: 70, child: Text('Month ${index + 1}:')),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: controllers[index],
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: const InputDecoration(
+                                    isDense: true, 
+                                    prefixText: '₱ ',
+                                    border: OutlineInputBorder()
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () {
+                  List<double> exactAmounts = controllers
+                      .map((c) => double.tryParse(c.text) ?? 0.0)
+                      .toList();
+                  ref.read(transactionsProvider.notifier).updateInstallmentPlan(
+                    baseTx: baseTx,
+                    exactAmounts: exactAmounts,
+                  );
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   double _calculateImpact(TransactionItem t) {
     if (t.isInstallment && t.installmentTotal != null && t.installmentTotal! > 0) return t.amount / t.installmentTotal!;
     return t.amount;
@@ -374,14 +476,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                     if (!_isEditing && acc.creditLimit != null)
                       Builder(
                         builder: (ctx) {
-                          double unbilled = 0;
-                          for (var t in txs.where((t) => t.isInstallment && t.installmentTotal != null && t.installmentTotal! > 0)) {
-                            double monthly = t.amount / t.installmentTotal!;
-                            int billed = (t.installmentCurrent ?? 0) + 1;
-                            double remaining = t.amount - (monthly * billed);
-                            if (remaining > 0) unbilled += remaining;
-                          }
-                          double available = acc.creditLimit! - acc.balance - unbilled;
+                          // FIXED: Removed flawed unbilled recalculation. Native account balance inherently tracks array sums.
+                          double available = acc.creditLimit! - acc.balance;
                           return Align(
                             alignment: Alignment.centerLeft, 
                             child: Text('Available Credit: ₱${available.toCurrency()}', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary, fontSize: 12))
@@ -396,7 +492,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
               child: TabBar(tabs: [
                 Tab(text: 'Statements'), 
                 Tab(text: 'Installments'), 
-                Tab(text: 'Statement History') // Updated Tab Name
+                Tab(text: 'Statement History') 
               ]),
             ),
           ],
@@ -404,7 +500,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
             children: [
               _buildAutomatedStatementsList(acc, txs, cats, colorScheme),
               _buildInstallmentsDashboard(txs, cats),
-              _buildStatementHistoryTab(acc, txs, cats, colorScheme), // Updated View Reference
+              _buildStatementHistoryTab(acc, txs, cats, colorScheme), 
             ],
           ),
         ),
@@ -419,7 +515,6 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       return const Center(child: Text('No structured bill logs computed.'));
     }
 
-    // Isolate only active statements for the primary view tab
     final activeUnbilled = computedStatements[0];
     final activePaymentDue = computedStatements[1];
 
@@ -463,7 +558,6 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   Widget _buildStatementHistoryTab(Account acc, List<TransactionItem> txs, List<Category> cats, ColorScheme colorScheme) {
     final computedStatements = StatementEngine.generateStatements(account: acc, transactions: txs);
     
-    // Check if historical archives exist (skipping current unbilled and payment due items)
     if (computedStatements.length <= 2) {
       return const Center(
         child: Text('Statement History\nNo historical statements archived.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
@@ -485,14 +579,13 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     final bool displayPaid = st.isPaid;
     final bool isLightMode = Theme.of(context).brightness == Brightness.light;
 
-    // Define adaptive background and border tint colors dynamically
     Color? cardBackground;
     BorderSide? cardBorder;
 
     if (displayPaid) {
       cardBackground = isLightMode 
-          ? Colors.green.shade50.withOpacity(0.5) // Crisp, bright green tint for Light Mode
-          : Colors.green.withOpacity(0.06);       // Clean, subtle glow for Dark/AMOLED Modes
+          ? Colors.green.shade50.withOpacity(0.5) 
+          : Colors.green.withOpacity(0.06);       
       cardBorder = BorderSide(color: isLightMode ? Colors.green.shade300 : Colors.green.shade700, width: 1);
     } else if (isArchived) {
       cardBackground = colorScheme.surfaceContainerLow;
@@ -511,7 +604,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       }),
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-        elevation: (isArchived || displayPaid) ? 0 : 1, // Flattens paid cards for a cleaner look
+        elevation: (isArchived || displayPaid) ? 0 : 1, 
         color: cardBackground,
         shape: cardBorder != null 
             ? RoundedRectangleBorder(side: cardBorder, borderRadius: BorderRadius.circular(12))
@@ -581,56 +674,67 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   }
 
   Widget _buildInstallmentsDashboard(List<TransactionItem> txs, List<Category> cats) {
-    final installments = txs.where((t) => t.isInstallment && t.installmentCurrent != t.installmentTotal).toList();
-    if (installments.isEmpty) return const Center(child: Text('No active installments.'));
+    final allInstallments = txs.where((t) => t.isInstallment).toList();
+    if (allInstallments.isEmpty) return const Center(child: Text('No active installments.'));
+    
+    final Map<String, List<TransactionItem>> grouped = {};
+    for (var t in allInstallments) {
+      final key = '${t.note}_${t.installmentTotal}';
+      grouped.putIfAbsent(key, () => []).add(t);
+    }
+    
+    final uniqueGroups = grouped.values.toList();
+    final now = DateTime.now().millisecondsSinceEpoch;
     
     return ListView.builder(
-      itemCount: installments.length,
+      itemCount: uniqueGroups.length,
       itemBuilder: (context, index) {
-        final tx = installments[index];
-        final total = tx.installmentTotal ?? 1;
-        final current = tx.installmentCurrent ?? 0;
-        final nextAmount = tx.amount / (total == 0 ? 1 : total);
+        final group = uniqueGroups[index];
+        group.sort((a, b) => (a.installmentCurrent ?? 0).compareTo(b.installmentCurrent ?? 0));
+        final baseTx = group.first;
+        
+        final grandTotal = group.fold(0.0, (sum, t) => sum + (t.amount / (t.installmentTotal ?? 1)));
+        final billedLegs = group.where((t) => t.date <= now).toList();
+        final billedTotal = billedLegs.fold(0.0, (sum, t) => sum + (t.amount / (t.installmentTotal ?? 1)));
+        final remaining = grandTotal - billedTotal;
+        
+        final totalMonths = baseTx.installmentTotal ?? 1;
+        final currentMonthsBilled = billedLegs.length;
+        
+        // Hide fully billed installments natively
+        if (currentMonthsBilled >= totalMonths) return const SizedBox.shrink();
+
+        final unbilledLegs = group.where((t) => t.date > now).toList();
+        final exactNextAmount = unbilledLegs.isNotEmpty ? (unbilledLegs.first.amount / (unbilledLegs.first.installmentTotal ?? 1)) : 0.0;
         
         return Card(
           child: ListTile(
-            title: Text(tx.note ?? 'Installment', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            title: Text(baseTx.note ?? 'Installment', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Next: ₱${nextAmount.toCurrency()} | Total: ₱${tx.amount.toCurrency()}', style: const TextStyle(fontSize: 12)),
+                Text('Next: ₱${exactNextAmount.toCurrency()} | Total: ₱${grandTotal.toCurrency()}', style: const TextStyle(fontSize: 12)),
                 const SizedBox(height: 4),
-                LinearProgressIndicator(value: total == 0 ? 0 : current / total),
+                LinearProgressIndicator(value: totalMonths == 0 ? 0 : currentMonthsBilled / totalMonths),
                 const SizedBox(height: 4),
-                Text('Left: ₱${(tx.amount - (nextAmount * current)).toCurrency()}', style: const TextStyle(fontSize: 12)),
+                Text('Left: ₱${remaining.toCurrency()}', style: const TextStyle(fontSize: 12)),
               ],
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.payment, color: Colors.green), 
-                  onPressed: () async {
-                    final updatedTx = TransactionItem(
-                      id: tx.id, amount: tx.amount, type: tx.type, categoryId: tx.categoryId,
-                      accountId: tx.accountId, date: tx.date, note: tx.note,
-                      isInstallment: tx.isInstallment, installmentTotal: tx.installmentTotal,
-                      installmentCurrent: current + 1,
-                    );
-                    await ref.read(transactionsProvider.notifier).updateTransaction(updatedTx);
-                    
-                    final instCat = cats.firstWhere((c) => c.name == 'Installment Payment' && c.type == 'expense', orElse: () => cats.first);
-                    final paymentTx = TransactionItem(
-                      amount: nextAmount, type: 'expense', categoryId: instCat.id!,
-                      accountId: tx.accountId, date: DateTime.now().millisecondsSinceEpoch,
-                      note: '${tx.note ?? "Installment"} (${current + 2}/${tx.installmentTotal})',
-                    );
-                    await ref.read(transactionsProvider.notifier).addTransaction(paymentTx);
-                  }
+                  icon: const Icon(Icons.edit, color: Colors.blue),
+                  onPressed: () => _showEditInstallmentDialog(group),
                 ),
+                // FIXED: Manual payment button deleted to respect statement engine passive collection rules
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red), 
-                  onPressed: () => ref.read(transactionsProvider.notifier).deleteTransaction(tx.id!)
+                  onPressed: () {
+                    for (var leg in group) {
+                      ref.read(transactionsProvider.notifier).deleteTransaction(leg.id!);
+                    }
+                  }
                 ),
               ],
             ),
@@ -652,7 +756,10 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
           
           String titleText = '${cat?.icon ?? ''} ${cat?.name ?? 'Unknown'}';
           if (tx.isInstallment && tx.installmentTotal != null && tx.installmentTotal! > 0) {
-            titleText += ' ${(tx.installmentCurrent ?? 0) + 1}/${tx.installmentTotal}';
+            int displayIndex = (tx.installmentCurrent == tx.installmentTotal) 
+                ? tx.installmentTotal! 
+                : (tx.installmentCurrent ?? 0) + 1;
+            titleText += ' $displayIndex/${tx.installmentTotal}';
           }
 
           return ListTile(
