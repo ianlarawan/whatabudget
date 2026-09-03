@@ -1,19 +1,18 @@
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart'; // Added dependency for correct directory mapping
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import '../state/theme_provider.dart';
 import '../state/providers.dart';
 
 class BackupService {
-  // FIXED: Adjusted to match the precise uppercase name case managed by your DatabaseHelper
   static const String _dbName = 'FinanceTracker.db';
 
-  /// Resolves the absolute path targeting your real operational database file location
   static Future<String> _getTargetDatabasePath() async {
     final documentsDirectory = await getApplicationDocumentsDirectory();
     return p.join(documentsDirectory.path, _dbName);
@@ -22,7 +21,7 @@ class BackupService {
   static String _generateBackupFileName() {
     final now = DateTime.now();
     final timestamp = DateFormat("yyyy-MM-dd'T'HH-mm-ss").format(now);
-    return 'WAB_Backup_$timestamp.db'; 
+    return 'WAB_Backup_$timestamp.db';
   }
 
   static Future<bool> exportBackup() async {
@@ -34,18 +33,15 @@ class BackupService {
 
       await _writePreferencesToDatabase();
 
-      final String targetFileName = _generateBackupFileName();
+      final tempDir = await getTemporaryDirectory();
+      final backupFileName = _generateBackupFileName();
+      final tempBackupPath = p.join(tempDir.path, backupFileName);
       
-      String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save Your Wallet Backup',
-        fileName: targetFileName,
-        type: FileType.any,
-      );
+      final exportFile = await sourceFile.copy(tempBackupPath);
 
-      if (outputFile == null) return false; 
-
-      await sourceFile.copy(outputFile);
-      return true;
+      final result = await Share.shareXFiles([XFile(exportFile.path)], text: 'What-A-Budget Database Backup');
+      
+      return result.status == ShareResultStatus.success || result.status == ShareResultStatus.dismissed;
     } catch (_) {
       return false;
     }
@@ -64,11 +60,9 @@ class BackupService {
 
       final targetLocation = await _getTargetDatabasePath();
 
-      // 1. Force close connection pointers safely
       final repo = ref.read(financeRepositoryProvider);
       await repo.dbHelper.closeDatabase();
       
-      // 2. Clear out transactional lock buffers at the exact file coordinates
       final walFile = File('$targetLocation-wal');
       final shmFile = File('$targetLocation-shm');
       
@@ -77,7 +71,6 @@ class BackupService {
       
       await deleteDatabase(targetLocation);
 
-      // 3. Write backup stream directly on top of the correct file slot
       final backupFile = File(result.files.single.path!);
       await backupFile.copy(targetLocation);
 

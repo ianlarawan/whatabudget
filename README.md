@@ -5,6 +5,16 @@
 **Privacy-First Personal Finance Tracker.**  
 An on-device financial manager built with Flutter. Designed for data isolation, absolute privacy, and high-performance offline ledger keeping, with lean utility integrations.
 
+## 📱 App Previews
+
+| Onboarding Screen | Home Dashboard | Transactions Ledger |
+| :-: | :-: | :-: |
+| <img src="assets/screenshots/1-Onboarding.png" width="240"> | <img src="assets/screenshots/2-Home.png" width="240"> | <img src="assets/screenshots/3-Transactions.png" width="240"> |
+
+| Workspace Calculator | Currency Matrix Core |
+| :-: | :-: |
+| <img src="assets/screenshots/3-Calculator.png" width="240"> | <img src="assets/screenshots/4-Currency.png" width="240"> |
+
 ## 🔐 Privacy & Network Architecture
 What-A-Budget is designed from the ground up to keep your financial logs completely isolated. 
 * **Data Isolation:** All transaction ledgers, bank balances, budgets, and settings are stored locally on your physical hardware. Zero cloud dependencies, zero external tracking.
@@ -30,6 +40,4 @@ What-A-Budget is designed from the ground up to keep your financial logs complet
 * **Real-Time Currency Matrix:** A live-syncing multi-currency hub tracking 31 global asset tickers via secure API handshakes. Features real-time calculation mirroring tied to row focus, adaptive symbol trimming, and alpha-faded typography.
 
 ## Vibe Code Notice
-This entire project was vibe coded with AI assistance—shaping the architecture, fixing bugs, and writing code through iterative conversations.
-
-While the logic and native asset configurations were synthesized through prompts, the engineering relies on continuous testing and refinement to keep things production-ready.
+This entire project was vibe coded with Google Gemini
